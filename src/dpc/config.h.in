@@ -1,0 +1,6 @@
+#ifndef DPC_CONFIG_H
+#define DPC_CONFIG_H
+
+#define DPA_BUILD_TYPE "@CMAKE_BUILD_TYPE@"
+
+#endif // !DPC_CONFIG_H
