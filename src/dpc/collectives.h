@@ -7,26 +7,28 @@
 
 namespace dpc {
 
-struct BaseCollectiveOptions {
-  uint32_t timeout;
+struct ReduceOptions {
+  ReduceOp op;
+  uint32_t root = 0;
+  /// Number of switch pipes to use for the allreduce task
+  /// This is only meant for debugging purposes.
+  /// For normal operation this shoud be left at 0, which
+  /// will default to the maximum pipes available in the device
+  /// This is handled at the Task constructor.
+  uint8_t pipes = 0;
 };
 
-struct ReduceOptions : public BaseCollectiveOptions {
-  uint8_t pipes;
+struct AllReduceOptions {
+  uint8_t pipes = 0;
   ReduceOp op;
 };
 
-struct AllReduceOptions : public BaseCollectiveOptions {
-  uint8_t pipes;
+struct ReduceScatterOptions {
+  uint8_t pipes = 0;
   ReduceOp op;
 };
 
-struct ReduceScatterOptions : public BaseCollectiveOptions {
-  uint8_t pipes;
-  ReduceOp op;
-};
-
-struct AllGatherOptions : public BaseCollectiveOptions {
+struct AllGatherOptions {
 };
 
 }

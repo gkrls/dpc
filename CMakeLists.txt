@@ -1,12 +1,14 @@
 cmake_minimum_required(VERSION 3.14)
 
-message(STATUS "Building DPA version: ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}")
-
-project(dpc VERSION 0.1.0)
+project(dpc VERSION "0.1.0")
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type" FORCE)
 endif()
+
+message(STATUS "Building DPA version: ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR} ${CMAKE_BUILD_TYPE}")
+
+
 
 option(DPC_DEVELOP "Build DPC for development" OFF)
 option(DPC_HOST    "Build DPA host library" ON)
@@ -26,3 +28,4 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_subdirectory(src)
+add_subdirectory(tools)

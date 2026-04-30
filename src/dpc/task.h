@@ -8,6 +8,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <variant>
 
@@ -18,6 +19,8 @@ namespace dpc {
 class Context;
 
 class Task {
+  friend class Context;
+
 public:
   using id_t = uint64_t;
   using Options = std::variant<AllReduceOptions, AllGatherOptions, ReduceScatterOptions>;
@@ -45,7 +48,13 @@ public:
     } perf;
   };
 
-  friend class Context;
+public:
+  Task() = delete;
+  Task(Task const &) = delete;
+  Task(Task &&) = delete;
+  Task &operator=(Task const &) = delete;
+  Task &operator=(Task &&) = delete;
+  ~Task() = default;
 
 public:
   // identity & target
@@ -57,9 +66,9 @@ public:
   // buffers
   void *const in;
   void *const out;
-  const uint64_t in_count;  // elements in input buffer
-  const uint64_t out_count; // elements in output buffer
+  const uint64_t numel;
   const DataType type;
+  const uint32_t timeout;
 
   // operation
   const Collective coll;
@@ -68,31 +77,6 @@ public:
 
   // bookkeeping
   Stats stats;
-
-public:
-  // factory
-  static std::shared_ptr<Task> Create(Context &ctx, Collective coll, ReduceOp reduce, void *in, void *out,
-                                      uint64_t in_count, uint64_t out_count, DataType type, bool async, Options opt);
-
-  // For AllReduce: needs reduce op, in_count == out_count
-  static std::shared_ptr<Task> CreateAllReduce(Context &ctx, ReduceOp reduce, void *in, void *out, uint64_t count,
-                                               DataType type, bool async, AllReduceOptions opt);
-
-  // For AllGather: no reduce op, out_count = in_count * world
-  static std::shared_ptr<Task> CreateAllGather(Context &ctx, void *in, void *out, uint64_t in_count, DataType type,
-                                               bool async, AllGatherOptions opt);
-
-  // For ReduceScatter: needs reduce op, in_count = out_count * world
-  static std::shared_ptr<Task> CreateReduceScatter(Context &ctx, ReduceOp reduce, void *in, void *out,
-                                                   uint64_t out_count, DataType type, bool async,
-                                                   ReduceScatterOptions opt);
-
-  Task() = delete;
-  Task(Task const &) = delete;
-  Task(Task &&) = delete;
-  Task &operator=(Task const &) = delete;
-  Task &operator=(Task &&) = delete;
-  ~Task() = default;
 
   // lifecycle
   Status abort();
@@ -124,7 +108,6 @@ public:
   // accessors
   Status getStatus() const { return status; }
   std::string_view getStatusString() const { return getStatusString(status); }
-  static std::string_view getStatusString(Status s);
   Context &getContext() { return ctx; }
   void *getInput() { return in; }
   void *getOutput() { return out; }
@@ -145,11 +128,38 @@ public:
   std::unordered_map<std::string, float> getStats();
   static void printStats(std::vector<std::shared_ptr<Task>> const &tasks);
 
+public:
+  static std::string_view getStatusString(Status s);
+
+public:
+  // factory
+  static std::shared_ptr<Task> Create(Context &ctx, Collective coll, ReduceOp reduce, void *in, void *out,
+                                      uint64_t in_count, uint64_t out_count, DataType type, bool async, Options opt);
+
+  // For AllReduce: needs reduce op, in_count == out_count
+  static std::shared_ptr<Task> CreateAllReduce(Context &ctx, ReduceOp reduce, void *in, void *out, uint64_t count,
+                                               DataType type, bool async, AllReduceOptions opt);
+
+  // For AllGather: no reduce op, out_count = in_count * world
+  static std::shared_ptr<Task> CreateAllGather(Context &ctx, void *in, void *out, uint64_t in_count, DataType type,
+                                               bool async, AllGatherOptions opt);
+
+  // For ReduceScatter: needs reduce op, in_count = out_count * world
+  static std::shared_ptr<Task> CreateReduceScatter(Context &ctx, ReduceOp reduce, void *in, void *out,
+                                                   uint64_t out_count, DataType type, bool async,
+                                                   ReduceScatterOptions opt);
+
+protected:
+  auto elapsed() const { return std::chrono::steady_clock::now() - t_start; }
+  auto elapsed_ms() const { return std::chrono::duration_cast<std::chrono::milliseconds>(elapsed()).count(); }
+
 private:
   Task(Context &ctx, Collective coll, ReduceOp reduce, void *in, void *out, uint64_t in_count, uint64_t out_count,
        DataType type, bool async, Options opt);
 
   Status setStatus(Status s);
+
+  std::chrono::steady_clock::time_point t_start = std::chrono::steady_clock::now();
 
   std::atomic<Status> status;
   std::mutex statusMutex;
