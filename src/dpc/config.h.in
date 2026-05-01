@@ -1,6 +1,11 @@
 #ifndef DPC_CONFIG_H
 #define DPC_CONFIG_H
 
-#define DPA_BUILD_TYPE "@CMAKE_BUILD_TYPE@"
+#define DPC_BUILD_TYPE "@CMAKE_BUILD_TYPE@"
+
+#cmakedefine01 DPC_DPDK
+
+#cmakedefine01 DPC_TRACE
+#cmakedefine01 DPC_PROFILE
 
 #endif // !DPC_CONFIG_H

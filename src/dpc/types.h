@@ -6,11 +6,16 @@
 namespace dpc {
 
 enum class DataType   : uint8_t { I32, U32, F32 };
-enum class Collective : uint8_t { Reduce = 1, AllReduce = 2, ReduceScatter, AllGather};
-enum class ReduceOp   : uint8_t { Sum, Min, Max };
+enum class Collective : uint8_t { AllReduce, AllGather, ReduceScatter };
+enum class ReduceOp   : uint8_t { Sum = 0, Min, Max, Avg, Prod };
 
-constexpr uint8_t dtypeWidth(DataType) noexcept { return 4; }  // for now
+struct CollectiveOptions {
+  int quantization = 0;
+  int pipes = 0;
+};
 
-} // namespace dpa
+constexpr uint8_t dtypeWidth(DataType) noexcept { return 4; }
+
+} // namespace dpc
 
 #endif

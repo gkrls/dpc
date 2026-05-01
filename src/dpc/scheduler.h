@@ -4,7 +4,7 @@
 #include <queue>
 #include <thread>
 
-#include "dpc/backend.h"
+#include "dpc/backend/backend.h"
 #include "dpc/task.h"
 
 namespace dpc {

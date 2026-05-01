@@ -1,12 +1,17 @@
 #include "dpc/context.h"
-#include "dpc/backend.h"
 #include "dpc/device.h"
 #include "dpc/scheduler.h"
 #include "dpc/util/env.h"
-#include "dpc/util/log.h"
+#include "dpc/util/error.h"
 #include <memory>
 #include <thread>
 #include <unistd.h>
+
+#include "dpc/backend/backend.h"
+#include "dpc/backend/null/null_backend.h"
+#if DPC_DPDK
+#include "dpc/backend/dpdk/dpdk_backend.h"
+#endif
 
 using namespace dpc;
 
@@ -24,18 +29,34 @@ DPC_ENV_UINT(DPA_TIMEOUT, "DPA_TIMEOUT");
 
 } // namespace
 
-Context::Context(uint16_t rank, uint16_t world, DeviceOptions const &dev, BackendOptions const &be,
-                 std::chrono::milliseconds timeout)
+Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, uint32_t timeout)
+    : Context(rank, world, dc, "null", timeout) {}
+Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, std::string be, uint32_t timeout)
+    : Context(rank, world, dc, Backend::getKind(be), timeout) {}
+
+Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend::Kind kind, uint32_t timeout) {
+  switch (kind) {
+  case Backend::Dpdk:
+#if DPC_DPDK
+    backend_ = std::make_shared<DpdkBackend>(*this, DpdkConfig{});
+    break;
+#else
+    DPC_FATAL("DPDK backend not enabled");
+#endif
+  // case Backend::Socket: backend_ = std::make_shared<SocketBackend>(*this, SocketConfig{}); break;
+  case Backend::Null: backend_ = std::make_shared<NullBackend>(*this, NullConfig{}); break;
+  }
+}
+
+Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &di, BackendConfig const &bc, uint32_t timeout)
     : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
       state_(Context::CREATED), timeout(timeout) {
 
   DPC_FATAL_IF(id > 0, "multiple contexts not supported yet");
 
-  dpc::log::init();
-
-  this->device_ = std::make_shared<Device>(dev);
-  this->backend_ = Backend::create(*this, be);
-  DPC_FATAL_IF(!this->backend_, "failed to create backend '{}'", be.getBackendName()); // options().name);
+  this->device_ = std::make_shared<Device>(di);
+  this->backend_ = Backend::create(*this, bc);
+  DPC_FATAL_IF(!this->backend_, "failed to create backend '{}'", bc.getBackendName()); // options().name);
 
   if (DPA_SCHEDULER.value_or(false)) this->scheduler = std::make_unique<FIFOScheduler>(*backend_);
   if (DPA_TIMEOUT) this->timeout = std::chrono::milliseconds(*DPA_TIMEOUT);

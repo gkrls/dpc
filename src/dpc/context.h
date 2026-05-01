@@ -6,8 +6,7 @@
 #include <memory>
 #include <thread>
 
-#include "dpc/backend.h"
-#include "dpc/collectives.h"
+#include "dpc/backend/backend.h"
 #include "dpc/device.h"
 #include "dpc/scheduler.h"
 #include "dpc/types.h"
@@ -24,18 +23,26 @@ public:
   friend class SocketBackend;
   friend class Task;
 
-  Context(uint16_t rank, uint16_t world, DeviceOptions const &de = {}, BackendOptions const &be = {},
-          std::chrono::milliseconds timeout = std::chrono::milliseconds{30000});
+  /// Default operation timeout (ms)
+  static const uint32_t kDefaultOperationTimeout = 30000;
+
+  Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, uint32_t timeout = kDefaultOperationTimeout);
+  Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, std::string be,
+          uint32_t timeout = kDefaultOperationTimeout);
+  Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend::Kind be,
+          uint32_t timeout = kDefaultOperationTimeout);
+  Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc,
+          uint32_t timeout = kDefaultOperationTimeout);
   ~Context();
 
-  State state();
-  Device &device();
-  Backend &backend();
+  State state() { return state_; }
+  Device &device() { return *device_; }
+  Backend &backend() { return *backend_; }
 
   operator uint32_t() const { return id; }
 
   void print();
-  bool usesScheduler();
+  bool usesScheduler() { return scheduler != nullptr; }
   bool isInitialized() { return state_ == INITIALIZED; }
   bool isFinalized() { return state_ == FINALIZED; }
 
@@ -46,21 +53,22 @@ public:
 public:
   // reduce: in and out and count elements, out only at root
   std::shared_ptr<Task> ReduceAsync(void *out, void *in, uint32_t count, DataType type, uint32_t root,
-                                    ReduceOptions const &opt = {});
+                                    CollectiveOptions const &opt = {});
   // reduce_scatter: in has count * nranks elements, out has count elements
   std::shared_ptr<Task> ReduceScatterAsync(void *out, void *in, uint32_t count, DataType type,
-                                           ReduceScatterOptions const &opt = {});
+                                           CollectiveOptions const &opt = {});
   // allreduce: in and out and count elements
   std::shared_ptr<Task> AllReduceAsync(void *out, void *in, uint32_t count, DataType type,
-                                       AllReduceOptions const &opt = {});
+                                       CollectiveOptions const &opt = {});
   // allgather: in has count elements, out has count * world elements
-  std::shared_ptr<Task> AllGatherAsync(void *in, void *out, uint32_t count, DataType type, AllGatherOptions const &opt);
+  std::shared_ptr<Task> AllGatherAsync(void *in, void *out, uint32_t count, DataType type,
+                                       CollectiveOptions const &opt);
 
   Task::Status Reduce(void *out, void *in, uint32_t count, DataType type, ReduceOp op, uint32_t root,
-                      ReduceOptions const &opt = {});
-  Task::Status ReduceScatter(void *out, void *in, uint32_t count, DataType type, ReduceScatterOptions const &opt = {});
-  Task::Status AllReduce(void *out, void *in, uint32_t count, DataType type, AllReduceOptions const &opt = {});
-  Task::Status AllGather(void *in, void *out, uint32_t count, DataType type, AllGatherOptions const &opt);
+                      CollectiveOptions const &opt = {});
+  Task::Status ReduceScatter(void *out, void *in, uint32_t count, DataType type, CollectiveOptions const &opt = {});
+  Task::Status AllReduce(void *out, void *in, uint32_t count, DataType type, CollectiveOptions const &opt = {});
+  Task::Status AllGather(void *in, void *out, uint32_t count, DataType type, CollectiveOptions const &opt);
 
 public:
   const uint16_t rank = 0;
@@ -98,10 +106,10 @@ private:
 };
 } // namespace dpc
 
-#define DPC_FATAL(fstr, ...)                                                                                           \
-  do {                                                                                                                 \
-    fmt::println(stderr, "FATAL {}:{}: " fstr, __FILE_NAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__);                    \
-    std::abort();                                                                                                      \
-  } while (0)
+// #define DPC_FATAL(fstr, ...)                                                                                           \
+//   do {                                                                                                                 \
+//     fmt::println(stderr, "FATAL {}:{}: " fstr, __FILE_NAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__);                    \
+//     std::abort();                                                                                                      \
+//   } while (0)
 
 #endif

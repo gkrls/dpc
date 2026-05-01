@@ -10,20 +10,17 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
-#include <variant>
+#include <vector>
 
-#include "dpc/collectives.h"
+#include "dpc/types.h"
 
 namespace dpc {
 
 class Context;
 
 class Task {
-  friend class Context;
-
 public:
   using id_t = uint64_t;
-  using Options = std::variant<AllReduceOptions, AllGatherOptions, ReduceScatterOptions>;
 
   enum Status : int8_t {
     Created = -4,
@@ -44,10 +41,74 @@ public:
     } time;
     struct {
       std::atomic<int> threads{0};
-      std::unordered_map<uint16_t, float> throughput_per_thread;
     } perf;
   };
 
+  // --- identity ---
+  Context &ctx;
+  const id_t id;
+  const std::string collname;
+  const std::string name;
+  const bool async;
+
+  // --- buffers ---
+  void *const in;
+  void *const out;
+  const uint64_t in_count;
+  const uint64_t out_count;
+  const DataType type;
+
+  // --- operation ---
+  const Collective coll;
+  const ReduceOp reduce;
+  const CollectiveOptions opt;
+
+  // --- bookkeeping ---
+  Stats stats;
+
+  // --- lifecycle ---
+  Status abort();
+  Status wait();
+  Status wait(std::chrono::milliseconds timeout);
+
+  // --- status queries ---
+  bool isRunning() const;
+  bool isFinished() const;
+  bool isCompleted() const;
+  bool isFailed() const;
+  bool isAborted() const;
+
+  // --- type queries ---
+  bool isFloatingPoint() const;
+  bool isInteger() const;
+  bool isSigned() const;
+  bool isUnsigned() const;
+
+  // --- collective queries ---
+  bool isReduction() const { return coll != Collective::AllGather; }
+  bool isAllReduce() const { return coll == Collective::AllReduce; }
+  bool isAllGather() const { return coll == Collective::AllGather; }
+  bool isReduceScatter() const { return coll == Collective::ReduceScatter; }
+  bool isQuantized() const { return opt.quantization > 0; }
+
+  // --- accessors ---
+  Status getStatus() const { return status; }
+  std::string_view getStatusString() const;
+  static std::string_view getStatusString(Status s);
+
+  // --- callbacks ---
+  bool setCallbacks(std::function<void(Task &)> on_complete, std::function<void(Task &)> on_error = nullptr,
+                    std::function<void(Task &)> on_abort = nullptr);
+  bool setCompletionCallback(std::function<void(Task &)> cb);
+  bool setAbortCallback(std::function<void(Task &)> cb);
+  bool setErrorCallback(std::function<void(Task &)> cb);
+  void clearCallbacks();
+
+  // --- stats ---
+  std::unordered_map<std::string, float> getStats();
+  static void printStats(std::vector<std::shared_ptr<Task>> const &tasks);
+
+  // --- remove all public constructors ---
 public:
   Task() = delete;
   Task(Task const &) = delete;
@@ -56,112 +117,25 @@ public:
   Task &operator=(Task &&) = delete;
   ~Task() = default;
 
-public:
-  // identity & target
-  Context &ctx;
-  const id_t id;
-  const std::string name;
-  const bool async;
-
-  // buffers
-  void *const in;
-  void *const out;
-  const uint64_t numel;
-  const DataType type;
-  const uint32_t timeout;
-
-  // operation
-  const Collective coll;
-  const ReduceOp reduce; // ignored when coll == AllGather
-  const Options opt;
-
-  // bookkeeping
-  Stats stats;
-
-  // lifecycle
-  Status abort();
-  Status wait();
-  Status wait(std::chrono::milliseconds timeout);
-
-  // status queries
-  bool isRunning() const;
-  bool isFinished() const;
-  bool isCompleted() const;
-  bool isFailed() const;
-  bool isAborted() const;
-
-  // type queries
-  bool isFloatingPoint() const;
-  bool isInteger() const;
-  bool isSigned() const;
-  bool isUnsigned() const;
-
-  // op queries
-  bool isReduction() const { return coll != Collective::AllGather; }
-  bool isAllReduce() const { return coll == Collective::AllReduce; }
-  bool isAllGather() const { return coll == Collective::AllGather; }
-  bool isReduceScatter() const { return coll == Collective::ReduceScatter; }
-
-  // option access — typed
-  template <class T> const T &options() const { return std::get<T>(opt); }
-
-  // accessors
-  Status getStatus() const { return status; }
-  std::string_view getStatusString() const { return getStatusString(status); }
-  Context &getContext() { return ctx; }
-  void *getInput() { return in; }
-  void *getOutput() { return out; }
-
-  // callbacks
-  bool setCallbacks(std::function<void(Task &)> on_complete, std::function<void(Task &)> on_error = nullptr,
-                    std::function<void(Task &)> on_abort = nullptr);
-  bool setCompletionCallback(std::function<void(Task &)> cb);
-  bool setAbortCallback(std::function<void(Task &)> cb);
-  bool setErrorCallback(std::function<void(Task &)> cb);
-  void clearCallbacks() {
-    on_complete_cb = {};
-    on_abort_cb = {};
-    on_error_cb = {};
-  }
-
-  // stats
-  std::unordered_map<std::string, float> getStats();
-  static void printStats(std::vector<std::shared_ptr<Task>> const &tasks);
-
-public:
-  static std::string_view getStatusString(Status s);
-
-public:
-  // factory
-  static std::shared_ptr<Task> Create(Context &ctx, Collective coll, ReduceOp reduce, void *in, void *out,
-                                      uint64_t in_count, uint64_t out_count, DataType type, bool async, Options opt);
-
-  // For AllReduce: needs reduce op, in_count == out_count
+  // --- only context creates with factories ---
+protected:
   static std::shared_ptr<Task> CreateAllReduce(Context &ctx, ReduceOp reduce, void *in, void *out, uint64_t count,
-                                               DataType type, bool async, AllReduceOptions opt);
+                                               DataType type, bool async, CollectiveOptions opt = {});
 
-  // For AllGather: no reduce op, out_count = in_count * world
   static std::shared_ptr<Task> CreateAllGather(Context &ctx, void *in, void *out, uint64_t in_count, DataType type,
-                                               bool async, AllGatherOptions opt);
+                                               bool async, CollectiveOptions opt = {});
 
-  // For ReduceScatter: needs reduce op, in_count = out_count * world
   static std::shared_ptr<Task> CreateReduceScatter(Context &ctx, ReduceOp reduce, void *in, void *out,
                                                    uint64_t out_count, DataType type, bool async,
-                                                   ReduceScatterOptions opt);
-
-protected:
-  auto elapsed() const { return std::chrono::steady_clock::now() - t_start; }
-  auto elapsed_ms() const { return std::chrono::duration_cast<std::chrono::milliseconds>(elapsed()).count(); }
+                                                   CollectiveOptions opt = {});
 
 private:
   Task(Context &ctx, Collective coll, ReduceOp reduce, void *in, void *out, uint64_t in_count, uint64_t out_count,
-       DataType type, bool async, Options opt);
+       DataType type, bool async, CollectiveOptions opt);
 
   Status setStatus(Status s);
 
-  std::chrono::steady_clock::time_point t_start = std::chrono::steady_clock::now();
-
-  std::atomic<Status> status;
+  std::atomic<Status> status{Status::Created};
   std::mutex statusMutex;
   std::condition_variable statusCv;
   std::function<void(Task &)> on_complete_cb;
@@ -171,4 +145,4 @@ private:
 
 } // namespace dpc
 
-#endif // DPA_TASK_H
+#endif // DPC_TASK_H
