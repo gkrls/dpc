@@ -47,8 +47,8 @@ Task::Task(Context &ctx, Collective coll, ReduceOp reduce, void *in, void *out, 
 
 // --- factory methods ---
 
-std::shared_ptr<Task> Task::CreateAllReduce(Context &ctx, ReduceOp reduce, void *in, void *out, uint64_t count,
-                                            DataType type, bool async, CollectiveOptions opt) {
+std::shared_ptr<Task> Task::CreateAllReduce(Context &ctx, bool async, void *in, void *out, uint64_t count,
+                                            DataType type, ReduceOp reduce, CollectiveOptions opt) {
   DPC_ERROR_IF(!in || !out, "null buffer");
   DPC_ERROR_IF(count == 0, "zero element count");
   DPC_ERROR_IF(reduce != ReduceOp::Sum && reduce != ReduceOp::Avg, "only SUM and AVG reductions currently supported");
@@ -111,7 +111,6 @@ std::shared_ptr<Task> Task::CreateAllGather(Context &ctx, void *in, void *out, u
 
 // --- lifecycle ---
 
-Task::Status Task::abort() { return setStatus(Status::Aborted); }
 
 Task::Status Task::wait() {
   std::unique_lock<std::mutex> lock(statusMutex);
@@ -135,7 +134,6 @@ std::string_view Task::getStatusString(Task::Status s) {
   case Task::Aborted: return "Aborted";
   case Task::Completed: return "Completed";
   case Task::Failed: return "Failed";
-  case Task::DidNotRun: return "DidNotRun";
   }
   return "Unknown";
 }
@@ -143,7 +141,7 @@ std::string_view Task::getStatusString(Task::Status s) {
 std::string_view Task::getStatusString() const { return getStatusString(status); }
 
 bool Task::isRunning() const { return status == Status::Running; }
-bool Task::isFinished() const { return status > Status::Running; }
+bool Task::isFinished() const { return status >= Status::Completed; }
 bool Task::isCompleted() const { return status == Status::Completed; }
 bool Task::isFailed() const { return status == Status::Failed; }
 bool Task::isAborted() const { return status == Status::Aborted; }
@@ -153,30 +151,53 @@ bool Task::isInteger() const { return !isFloatingPoint(); }
 bool Task::isSigned() const { return type != DataType::U32; }
 bool Task::isUnsigned() const { return type == DataType::U32; }
 
-Task::Status Task::setStatus(Status s) {
+// Task::Status Task::setStatus(Status s) {
+//   std::lock_guard<std::mutex> lock(statusMutex);
+//   Status old = this->status;
+
+//   if (s == Status::Aborted && old > s) return old;
+
+//   DPC_ERROR_IF(static_cast<int>(s) < static_cast<int>(old), "task {}: invalid status transition '{}' -> '{}'", name,
+//                getStatusString(old), getStatusString(s));
+
+//   // Cannot go back to an older state
+//   if (s <= old) return old;
+
+//   if (s == Status::Running) stats.time.start = std::chrono::steady_clock::now();
+//   this->status = s;
+
+//   if (isFinished()) {
+//     if (s == Status::Completed) stats.time.finish = std::chrono::steady_clock::now();
+
+//     statusCv.notify_all();
+
+//     if (isAborted() && on_abort_cb) on_abort_cb(*this);
+//     else if (isCompleted() && on_complete_cb) on_complete_cb(*this);
+//     else if (isFailed() && on_error_cb) on_error_cb(*this);
+//   }
+
+//   return old;
+// }
+
+bool Task::abort() { return setStatus(Status::Aborted); }
+
+bool Task::setStatus(Status s) {
   std::lock_guard<std::mutex> lock(statusMutex);
-  Status old = this->status;
+  if (status >= Completed) return false;  // already terminal
+  if (s <= status) return false;          // no backward non-terminal moves
 
-  if (s == Status::Aborted && old > s) return old;
+  if (s == Running) stats.time.start = std::chrono::steady_clock::now();
+  status = s;
 
-  DPC_ERROR_IF(static_cast<int>(s) < static_cast<int>(old), "task {}: invalid status transition '{}' -> '{}'", name,
-               getStatusString(old), getStatusString(s));
-
-  if (s <= old) return old;
-
-  if (s == Status::Running) stats.time.start = std::chrono::steady_clock::now();
-  this->status = s;
-
-  if (isFinished()) {
-    if (s == Status::Completed) stats.time.finish = std::chrono::steady_clock::now();
+  if (status >= Completed) {
+    if (s == Completed) stats.time.finish = std::chrono::steady_clock::now();
     statusCv.notify_all();
-
     if (isAborted() && on_abort_cb) on_abort_cb(*this);
     else if (isCompleted() && on_complete_cb) on_complete_cb(*this);
     else if (isFailed() && on_error_cb) on_error_cb(*this);
   }
 
-  return old;
+  return true;
 }
 
 // --- callbacks ---
@@ -236,7 +257,7 @@ std::unordered_map<std::string, float> Task::getStats() {
   float bytes = static_cast<float>(in_count * dtypeWidth(type));
 
   out["time_ms"] = time_ms;
-  out["threads"] = static_cast<float>(stats.perf.threads.load());
+  // out["threads"] = static_cast<float>(stats.perf.threads.load());
   out["elements"] = elements;
   out["bytes"] = bytes;
   out["elems_per_s"] = elements / time_s;

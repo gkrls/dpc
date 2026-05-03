@@ -1,5 +1,6 @@
 #include "dpc/device.h"
 #include "dpc/util/error.h"
+#include "dpc/util/log.h"
 
 using namespace dpc;
 
@@ -10,5 +11,12 @@ Device::Device(DeviceConfig const &conf) : conf(conf) {
 
 
 void Device::print(bool detail) {
-
+  DPC_INFO("DEV: {}", conf.name);
 }
+
+// Ctx:
+// Dev:
+// Bck:
+
+
+

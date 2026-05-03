@@ -3,9 +3,11 @@
 
 #define DPC_BUILD_TYPE "@CMAKE_BUILD_TYPE@"
 
-#cmakedefine01 DPC_DPDK
+#define DPC_DPDK_ENABLED @DPC_DPDK@
+#define DPC_TRACE_ENABLED @DPC_TRACE@
+#define DPC_PROFILE_ENABLED @DPC_PROFILE@
 
-#cmakedefine01 DPC_TRACE
-#cmakedefine01 DPC_PROFILE
+#cmakedefine01 DPC_AVX512_AVAILABLE
+#cmakedefine01 DPC_AVX2_AVAILABLE
 
 #endif // !DPC_CONFIG_H

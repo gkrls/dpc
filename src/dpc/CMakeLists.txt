@@ -5,24 +5,44 @@ endif()
 
 message(STATUS "Configuring libdpc")
 
+# # Check for vector extensions
+# set(DPC_AVX512_AVAILABLE 0)
+# set(DPC_AVX2_AVAILABLE 0)
+
+# if(DPC_SIMD)
+#   include(CheckCPUFeatures)
+#   include(CheckCXXCompilerFlag)
+
+#   check_cpu_feature("avx512f" _cpu_512f)
+#   check_cpu_feature("avx512dq" _cpu_512dq)
+#   check_cpu_feature("avx512bw" _cpu_512bw)
+#   check_cxx_compiler_flag("-mavx512f -mavx512dq -mavx512bw" _cc_512)
+
+#   if(_cpu_512f AND _cpu_512dq AND _cpu_512bw AND _cc_512)
+#     set(DPC_SIMD_FLAGS "-mavx512f -mavx512dq -mavx512bw -mavx2 -mfma")
+#     set(DPC_AVX512_AVAILABLE 1)
+#     set(DPC_AVX2_AVAILABLE 1)
+#     message(STATUS "SIMD: AVX-512")
+#   else()
+#     check_cpu_feature("avx2" _cpu_avx2)
+#     check_cxx_compiler_flag("-mavx2 -mfma" _cc_avx2)
+
+#     if(_cpu_avx2 AND _cc_avx2)
+#       set(DPC_SIMD_FLAGS "-mavx2 -mfma")
+#       set(DPC_AVX2_AVAILABLE 1)
+#       message(STATUS "SIMD: AVX2")
+#     else()
+#         set(DPC_SIMD_FLAGS "")
+#       message(STATUS "SIMD: none available")
+#     endif()
+#   endif()
+# else()
+#   set(DPC_SIMD_FLAGS "")
+#   message(STATUS "SIMD: disabled")
+# endif()
+
+
 include(FetchContent)
-
-# # fmt
-# message(STATUS "Fetching fmt")
-# FetchContent_Declare(fmt GIT_REPOSITORY https://github.com/fmtlib/fmt.git GIT_TAG 10.2.1)
-# FetchContent_MakeAvailable(fmt)
-# include_directories(${fmt_SOURCE_DIR}/include)
-# file(COPY ${fmt_SOURCE_DIR}/include/fmt DESTINATION ${CMAKE_BINARY_DIR}/include)
-# install(FILES $<TARGET_FILE:fmt> DESTINATION lib)
-# install(DIRECTORY ${fmt_SOURCE_DIR}/include/fmt DESTINATION include)
-# message(STATUS "Fetching fmt - Done")
-
-# # nlohman json
-# FetchContent_Declare(json URL https://github.com/nlohmann/json/releases/download/v3.12.0/json.tar.xz DOWNLOAD_EXTRACT_TIMESTAMP true)
-# FetchContent_MakeAvailable(json)
-# include_directories(${json_SOURCE_DIR}/include)
-# install(DIRECTORY ${json_SOURCE_DIR}/include/nlohmann DESTINATION include)
-
 
 # Dependencies
 FetchContent_Declare(fmt GIT_REPOSITORY https://github.com/fmtlib/fmt.git GIT_TAG 10.2.1)
@@ -35,8 +55,10 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/config.h.in"  "${CMAKE_BINARY_DIR}/i
 
 # Sources
 set(DPC_SOURCES
-  backend/null/null_backend.cc
+  backend/noop/noop_backend.cc
   backend/backend.cc
+  util/net_addr.cc
+  util/net_iface.cc
   context.cc
   device.cc
   dpc.cc

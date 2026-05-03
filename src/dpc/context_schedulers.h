@@ -4,22 +4,13 @@
 #include <queue>
 #include <thread>
 
-#include "dpc/backend/backend.h"
-#include "dpc/task.h"
+#include "dpc/context.h"
 
 namespace dpc {
 
-class Scheduler {
+class FIFOScheduler : public Context::Scheduler {
 public:
-  virtual ~Scheduler() = default;
-  virtual void start() = 0;
-  virtual void stop() = 0;
-  virtual void submit(std::shared_ptr<Task> task) = 0;
-};
-
-class FIFOScheduler : public Scheduler {
-public:
-  FIFOScheduler(Backend &b) : backend(b) {}
+  FIFOScheduler(Context &ctx) : ctx(ctx) {}
 
   void start() override {
     thread = std::thread([this] { loop(); });
@@ -51,13 +42,13 @@ private:
         auto task = queue.front();
         queue.pop();
         lock.unlock();
-        backend.push(task);
+        ctx.execute(task);
         lock.lock();
       }
     }
   }
 
-  Backend &backend;
+  Context &ctx;
   std::thread thread;
   std::mutex mutex;
   std::condition_variable cv;

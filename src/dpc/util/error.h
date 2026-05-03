@@ -15,7 +15,7 @@
     if (!(pred)) {                                                                                                     \
       auto msg = fmt::format("{}:{}: " fstr, __FILE_NAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__);                      \
       fmt::println(stderr, "dpc.assert:  {}", msg);                                                                    \
-      std::abort(); /*std::quick_exit(1);*/                                                                            \
+      std::quick_exit(1); /*std::quick_exit(1);*/                                                                            \
     }                                                                                                                  \
   } while (0);
 
@@ -24,7 +24,7 @@
 #define DPC_FATAL(fstr, ...)                                                                                           \
   do {                                                                                                                 \
     fmt::println(stderr, "dpc.fatal {}:{}: " fstr, __FILE_NAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__);                \
-    std::abort();                                                                                                      \
+    std::quick_exit(1);                                                                                                    \
   } while (0)
 
 #define DPC_ERROR(fstr, ...)                                                                                           \

@@ -1,12 +1,10 @@
 #ifndef DPC_BACKEND_H
 #define DPC_BACKEND_H
 
-#include <string>
-#include <unordered_map>
-
 #include "dpc/task.h"
 #include "dpc/types.h"
 #include "dpc/util/error.h"
+#include <string>
 
 namespace dpc {
 
@@ -22,22 +20,20 @@ class Backend {
 
 public:
   // BACKEND REGISTRATION
-  enum Kind { Null, Dpdk };
-  static inline constexpr std::pair<Kind, const char*> registry[] = {
-      {Null, "null"},
-      {Dpdk, "dpdk"},
+  enum Kind {
+    Noop,
+    Dpdk,
   };
-  static inline std::string getName(Kind kind) {
-    for (auto& [k, n] : registry)
-      if (k == kind) return n;
-    DPC_FATAL("internal: unregistered backend kind");
-  }
 
-  static inline Kind getKind(std::string_view name) {
-    for (auto& [k, n] : registry)
-      if (n == name) return k;
-    DPC_FATAL("internal: unregistered backend name");
-  }
+private:
+  static inline constexpr std::pair<Backend::Kind, const char *> registry[] = {
+      {Backend::Noop, "noop"},
+      {Backend::Dpdk, "dpdk"},
+  };
+
+public:
+  static std::string getName(Backend::Kind kind);
+  static Backend::Kind get(std::string_view name);
 
   // static std::string getName(Kind kind) {
   //   static const std::unordered_map<Kind, std::string> names = {{Null, "null"}, {Dpdk, "dpdk"}};
@@ -47,8 +43,7 @@ public:
   //   return it->second;
   // }
   // static std::string getName(BackendConfig const& conf);
-
-  enum State { Created = 1, Initialized, Finalizing, Finalized };
+  enum State { Created = 1, Running, Finalizing, Finalized };
 
   Backend() = delete;
   Backend(Backend &&) = delete;
@@ -56,26 +51,7 @@ public:
   void operator=(Backend const &) = delete;
   Backend &operator=(Backend &&) = delete;
 
-public:
-  Backend(Context &ctx, Backend::Kind kind) : ctx(ctx), kind_(kind), name_(getName(kind)) {}
-
-  virtual std::string name() { return name_; }
-  /**
-   * @brief Start the backend, creating all necessary resources
-   * After this call the backend is ready to execute tasks
-   */
-  virtual void start() = 0;
-  /**
-   * @brief Stop the backend, destroying resources etc
-   * After this call the backend cannot accept tasks
-   */
-  virtual void stop() = 0;
-  /**
-   * @brief Submit a task to the backend for execution
-   * This is a non-blocking call that should return immediatelly
-   * Task status is handled by the Task object itself
-   */
-  virtual bool push(std::shared_ptr<Task> task) = 0;
+  virtual std::string name() const { return name_; }
   /**
    * @brief Print a summary about his backend to stdout
    */
@@ -97,10 +73,27 @@ public:
    */
   virtual Context &context() const { return ctx; }
 
-
   bool is(Backend::Kind kind) const { return kind_ == kind; }
 
 protected:
+  Backend(Context &ctx, Backend::Kind kind) : ctx(ctx), kind_(kind), name_(getName(kind)) {}
+
+  /**
+   * @brief Start the backend, creating all necessary resources
+   * After this call the backend is ready to execute tasks
+   */
+  virtual void start() = 0;
+  /**
+   * @brief Stop the backend, destroying resources etc
+   * After this call the backend cannot accept tasks
+   */
+  virtual void stop() = 0;
+  /**
+   * @brief Submit a task to the backend for execution
+   * This is a non-blocking call that should return immediatelly
+   * Task status is handled by the Task object itself
+   */
+  virtual bool push(std::shared_ptr<Task> task) = 0;
   /**
    * Create a backend instance from BackendOptions
    * If opts is a subclass of BackendOptions the apropriate backend is created and returned

@@ -8,7 +8,6 @@
 
 #include "dpc/backend/backend.h"
 #include "dpc/device.h"
-#include "dpc/scheduler.h"
 #include "dpc/types.h"
 
 namespace dpc {
@@ -18,10 +17,11 @@ class SocketBackend;
 
 class Context final {
 public:
-  enum State { CREATED = 1, INITIALIZED, FINALIZING, FINALIZED };
-  friend class Backend;
-  friend class SocketBackend;
-  friend class Task;
+  enum State { Created = 1, Running, Finalizing, Finalized };
+  friend class FIFOScheduler;
+  // friend class Backend;
+  // friend class SocketBackend;
+  // friend class Task;
 
   /// Default operation timeout (ms)
   static const uint32_t kDefaultOperationTimeout = 30000;
@@ -43,8 +43,8 @@ public:
 
   void print();
   bool usesScheduler() { return scheduler != nullptr; }
-  bool isInitialized() { return state_ == INITIALIZED; }
-  bool isFinalized() { return state_ == FINALIZED; }
+  bool isRunning() { return state_ == Running; }
+  bool isFinalized() { return state_ == Finalized; }
 
   Task::Status wait(std::shared_ptr<Task> task);
   Task::Status wait(std::shared_ptr<Task> task, std::chrono::milliseconds timeout);
@@ -58,22 +58,31 @@ public:
   std::shared_ptr<Task> ReduceScatterAsync(void *out, void *in, uint32_t count, DataType type,
                                            CollectiveOptions const &opt = {});
   // allreduce: in and out and count elements
-  std::shared_ptr<Task> AllReduceAsync(void *out, void *in, uint32_t count, DataType type,
+  std::shared_ptr<Task> AllReduceAsync(void *out, void *in, uint32_t count, DataType type, ReduceOp op,
                                        CollectiveOptions const &opt = {});
   // allgather: in has count elements, out has count * world elements
-  std::shared_ptr<Task> AllGatherAsync(void *in, void *out, uint32_t count, DataType type,
+  std::shared_ptr<Task> AllGatherAsync(void *out, void *in, uint32_t count, DataType type,
                                        CollectiveOptions const &opt);
 
   Task::Status Reduce(void *out, void *in, uint32_t count, DataType type, ReduceOp op, uint32_t root,
                       CollectiveOptions const &opt = {});
   Task::Status ReduceScatter(void *out, void *in, uint32_t count, DataType type, CollectiveOptions const &opt = {});
-  Task::Status AllReduce(void *out, void *in, uint32_t count, DataType type, CollectiveOptions const &opt = {});
-  Task::Status AllGather(void *in, void *out, uint32_t count, DataType type, CollectiveOptions const &opt);
+  Task::Status AllReduce(void *out, void *in, uint32_t count, DataType type, ReduceOp op, CollectiveOptions const &opt = {});
+  Task::Status AllGather(void *out, void *in, uint32_t count, DataType type, CollectiveOptions const &opt = {});
 
 public:
   const uint16_t rank = 0;
   const uint16_t world = 1;
   const uint32_t id = 0;
+
+public:
+  class Scheduler {
+  public:
+    virtual ~Scheduler() = default;
+    virtual void start() = 0;
+    virtual void stop() = 0;
+    virtual void submit(std::shared_ptr<Task> task) = 0;
+  };
 
 private:
   /// The scheduler loop of this context, running on its own thread
@@ -82,8 +91,8 @@ private:
   void start();
   void stop();
   void watchdog();
-  /// Called internally to submit a task to the scheduler
   void schedule(std::shared_ptr<Task> t);
+  void execute(std::shared_ptr<Task> t);
 
 private:
   bool use_scheduler_ = false;
@@ -103,7 +112,13 @@ private:
 
   std::mutex tracking_mutex;
   std::unordered_map<uint64_t, std::shared_ptr<Task>> tracking_tasks;
+
+
 };
+
+ // scheduler stuff
+
+
 } // namespace dpc
 
 // #define DPC_FATAL(fstr, ...)                                                                                           \

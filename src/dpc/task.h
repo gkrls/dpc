@@ -23,13 +23,12 @@ public:
   using id_t = uint64_t;
 
   enum Status : int8_t {
-    Created = -4,
-    Submitted = -3,
-    Running = -2,
-    Aborted = -1,
+    Created = -3,
+    Submitted = -2,
+    Running = -1,
     Completed = 0,
-    Failed = 1,
-    DidNotRun = 2,
+    Aborted = 1,
+    Failed = 2,
   };
 
   struct Stats {
@@ -39,9 +38,9 @@ public:
       std::chrono::steady_clock::time_point start;
       std::chrono::steady_clock::time_point finish;
     } time;
-    struct {
-      std::atomic<int> threads{0};
-    } perf;
+    // struct {
+    //   std::atomic<int> threads{0};
+    // } perf;
   };
 
   // --- identity ---
@@ -67,7 +66,8 @@ public:
   Stats stats;
 
   // --- lifecycle ---
-  Status abort();
+  bool abort();
+  bool setStatus(Status s);
   Status wait();
   Status wait(std::chrono::milliseconds timeout);
 
@@ -110,6 +110,8 @@ public:
 
   // --- remove all public constructors ---
 public:
+  friend class Context;
+  
   Task() = delete;
   Task(Task const &) = delete;
   Task(Task &&) = delete;
@@ -119,8 +121,8 @@ public:
 
   // --- only context creates with factories ---
 protected:
-  static std::shared_ptr<Task> CreateAllReduce(Context &ctx, ReduceOp reduce, void *in, void *out, uint64_t count,
-                                               DataType type, bool async, CollectiveOptions opt = {});
+  static std::shared_ptr<Task> CreateAllReduce(Context &ctx, bool async, void *in, void *out, uint64_t count,
+                                               DataType type, ReduceOp reduce, CollectiveOptions opt = {});
 
   static std::shared_ptr<Task> CreateAllGather(Context &ctx, void *in, void *out, uint64_t in_count, DataType type,
                                                bool async, CollectiveOptions opt = {});
@@ -132,8 +134,6 @@ protected:
 private:
   Task(Context &ctx, Collective coll, ReduceOp reduce, void *in, void *out, uint64_t in_count, uint64_t out_count,
        DataType type, bool async, CollectiveOptions opt);
-
-  Status setStatus(Status s);
 
   std::atomic<Status> status{Status::Created};
   std::mutex statusMutex;

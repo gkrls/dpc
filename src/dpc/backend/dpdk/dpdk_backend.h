@@ -147,7 +147,7 @@ public:
 
   friend class DpdkWorker;
   using Slot = SlotAlt;
-  DpdkBackend(Context &ctx, DpdkConfig conf);
+  DpdkBackend(Context &ctx, DpdkConfig const& conf = {});
   ~DpdkBackend();
   virtual DpdkConfig const &config() const override { return conf; }
   virtual void print(bool details) const override;
