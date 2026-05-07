@@ -69,7 +69,7 @@ void NoopBackend::print(bool details) const {
 Worker::Worker(uint16_t tid, NoopBackend &backend) : tid(tid), backend(backend), thread(&Worker::loop, this){};
 
 Task::Status Worker::execute(std::shared_ptr<Task> task) {
-  DPC_DEBUG("{}-t{}: Running task {}", backend.name(), tid, task->name);
+  DPC_TRACE("{}-t{}: Running task {}", backend.name(), tid, task->name);
   std::this_thread::sleep_for(std::chrono::milliseconds(backend.conf.op_ms));
   return Task::Completed;
 };

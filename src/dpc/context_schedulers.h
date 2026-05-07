@@ -12,6 +12,8 @@ class FIFOScheduler : public Context::Scheduler {
 public:
   FIFOScheduler(Context &ctx) : ctx(ctx) {}
 
+  std::string name() override { return "fifo"; }
+
   void start() override {
     thread = std::thread([this] { loop(); });
   }

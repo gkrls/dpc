@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -51,10 +52,10 @@ public:
   const bool async;
 
   // --- buffers ---
-  void *const in;
-  void *const out;
-  const uint64_t in_count;
-  const uint64_t out_count;
+  const void *const sendbuf;
+  void *const recvbuf;
+  const uint64_t sendcount;
+  const uint64_t recvcount;
   const DataType type;
 
   // --- operation ---
@@ -92,6 +93,7 @@ public:
   bool isQuantized() const { return opt.quantization > 0; }
 
   // --- accessors ---
+  std::string const &toString() const;
   Status getStatus() const { return status; }
   std::string_view getStatusString() const;
   static std::string_view getStatusString(Status s);
@@ -111,7 +113,6 @@ public:
   // --- remove all public constructors ---
 public:
   friend class Context;
-  
   Task() = delete;
   Task(Task const &) = delete;
   Task(Task &&) = delete;
@@ -121,20 +122,21 @@ public:
 
   // --- only context creates with factories ---
 protected:
-  static std::shared_ptr<Task> CreateAllReduce(Context &ctx, bool async, void *in, void *out, uint64_t count,
-                                               DataType type, ReduceOp reduce, CollectiveOptions opt = {});
+  static std::shared_ptr<Task> CreateAllReduce(Context &ctx, bool async, const void *sendbuf, void *recvbuf,
+                                               uint64_t count, DataType type, ReduceOp op = ReduceOp::__default__,
+                                               CollectiveOptions opt = {});
 
-  static std::shared_ptr<Task> CreateAllGather(Context &ctx, void *in, void *out, uint64_t in_count, DataType type,
-                                               bool async, CollectiveOptions opt = {});
-
-  static std::shared_ptr<Task> CreateReduceScatter(Context &ctx, ReduceOp reduce, void *in, void *out,
-                                                   uint64_t out_count, DataType type, bool async,
+  static std::shared_ptr<Task> CreateReduceScatter(Context &ctx, bool async, const void *sendbuf, void *recvbuf,
+                                                   uint64_t recvcount, DataType type, ReduceOp op = ReduceOp::__default__,
                                                    CollectiveOptions opt = {});
 
-private:
-  Task(Context &ctx, Collective coll, ReduceOp reduce, void *in, void *out, uint64_t in_count, uint64_t out_count,
-       DataType type, bool async, CollectiveOptions opt);
+  static std::shared_ptr<Task> CreateAllGather(Context &ctx, bool async, const void *sendbuf, void *recvbuf,
+                                               uint64_t sendcount, DataType type, CollectiveOptions opt = {});
 
+private:
+  Task(Context &ctx, bool async, const void *sendbuf, void *recvbuf, uint64_t sendcount, uint64_t recvcount,
+       DataType type, ReduceOp reduce, Collective coll, CollectiveOptions opt);
+  mutable std::string str;
   std::atomic<Status> status{Status::Created};
   std::mutex statusMutex;
   std::condition_variable statusCv;

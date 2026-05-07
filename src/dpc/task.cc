@@ -3,10 +3,12 @@
 #include "dpc/types.h"
 #include "dpc/util/error.h"
 #include "dpc/util/log.h"
+#include "fmt/core.h"
 
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <string>
 
 using namespace dpc;
 
@@ -35,22 +37,39 @@ static std::string reduceOpName(ReduceOp reduce) {
   }
 }
 
+static std::string datatypeToString(DataType dtype) {
+  switch (dtype) {
+  case DataType::I32: return "i32";
+  case DataType::U32: return "u32";
+  case DataType::F32: return "f32";
+  default: DPC_UNREACHABLE();
+  }
+}
+
 // --- construction ---
 
-Task::Task(Context &ctx, Collective coll, ReduceOp reduce, void *in, void *out, uint64_t in_count, uint64_t out_count,
-           DataType type, bool async, CollectiveOptions opt)
-    : id(nextTaskID()), collname(collectiveName(coll)), name(collname + " " + std::to_string(id)), ctx(ctx),
-      async(async), in(in), out(out), in_count(in_count), out_count(out_count), type(type), coll(coll), reduce(reduce),
-      opt(opt), stats{} {
+// Task::Task(Context &ctx, Collective coll, ReduceOp reduce, void *in, void *out, uint64_t in_count, uint64_t
+// out_count,
+//            DataType type, bool async, CollectiveOptions opt)
+
+Task::Task(Context &ctx, bool async, const void *sendbuf, void *recvbuf, uint64_t sendcount, uint64_t recvcount,
+           DataType type, ReduceOp reduce, Collective coll, CollectiveOptions opt)
+    : ctx(ctx), id(nextTaskID()), collname(collectiveName(coll)), name(std::to_string(id) + "." + collname),
+      async(async), sendbuf(sendbuf), recvbuf(recvbuf), sendcount(sendcount), recvcount(recvcount), type(type),
+      coll(coll), reduce(reduce), opt(opt), stats{} {
   stats.time.create = std::chrono::steady_clock::now();
 }
 
 // --- factory methods ---
 
-std::shared_ptr<Task> Task::CreateAllReduce(Context &ctx, bool async, void *in, void *out, uint64_t count,
-                                            DataType type, ReduceOp reduce, CollectiveOptions opt) {
-  DPC_ERROR_IF(!in || !out, "null buffer");
-  DPC_ERROR_IF(count == 0, "zero element count");
+// std::shared_ptr<Task> Task::CreateAllReduce(Context &ctx, bool async, void *in, void *out, uint64_t count,
+//                                             DataType type, ReduceOp reduce, CollectiveOptions opt) {
+
+std::shared_ptr<Task> Task::CreateAllReduce(Context &ctx, bool async, const void *sendbuf, void *recvbuf,
+                                            uint64_t count, DataType type, ReduceOp reduce, CollectiveOptions opt) {
+  DPC_ERROR_IF(!sendbuf, "null sendbuf");
+  DPC_ERROR_IF(!recvbuf, "null recvbuf");
+  DPC_ERROR_IF(count == 0, "zero count");
   DPC_ERROR_IF(reduce != ReduceOp::Sum && reduce != ReduceOp::Avg, "only SUM and AVG reductions currently supported");
 
   if (type == DataType::I32 || type == DataType::U32) {
@@ -67,13 +86,16 @@ std::shared_ptr<Task> Task::CreateAllReduce(Context &ctx, bool async, void *in, 
   DPC_ERROR_IF(opt.pipes > ctx.device().conf.pipes, "requested pipes ({}) > device pipes ({})", opt.pipes,
                ctx.device().conf.pipes);
 
-  return std::shared_ptr<Task>(new Task(ctx, Collective::AllReduce, reduce, in, out, count, count, type, async, opt));
+  return std::shared_ptr<Task>(
+      new Task(ctx, async, sendbuf, recvbuf, count, count, type, reduce, Collective::AllReduce, opt));
 }
 
-std::shared_ptr<Task> Task::CreateReduceScatter(Context &ctx, ReduceOp reduce, void *in, void *out, uint64_t out_count,
-                                                DataType type, bool async, CollectiveOptions opt) {
-  DPC_ERROR_IF(!in || !out, "null buffer");
-  DPC_ERROR_IF(out_count == 0, "zero element count");
+std::shared_ptr<Task> Task::CreateReduceScatter(Context &ctx, bool async, const void *sendbuf, void *recvbuf,
+                                                uint64_t recvcount, DataType type, ReduceOp reduce,
+                                                CollectiveOptions opt) {
+  DPC_ERROR_IF(!sendbuf, "null sendbuf");
+  DPC_ERROR_IF(!recvbuf, "null recvbuf");
+  DPC_ERROR_IF(recvcount == 0, "zero recvcount");
   DPC_ERROR_IF(reduce != ReduceOp::Sum && reduce != ReduceOp::Avg, "only SUM and AVG reductions currently supported");
 
   if (type == DataType::I32 || type == DataType::U32) {
@@ -90,27 +112,22 @@ std::shared_ptr<Task> Task::CreateReduceScatter(Context &ctx, ReduceOp reduce, v
   DPC_ERROR_IF(opt.pipes > ctx.device().conf.pipes, "requested pipes ({}) > device pipes ({})", opt.pipes,
                ctx.device().conf.pipes);
 
-  uint64_t in_count = out_count * ctx.world;
-
-  return std::shared_ptr<Task>(
-      new Task(ctx, Collective::ReduceScatter, reduce, in, out, in_count, out_count, type, async, opt));
+  return std::shared_ptr<Task>(new Task(ctx, async, sendbuf, recvbuf, recvcount * ctx.world, recvcount, type, reduce,
+                                        Collective::ReduceScatter, opt));
 }
 
-std::shared_ptr<Task> Task::CreateAllGather(Context &ctx, void *in, void *out, uint64_t in_count, DataType type,
-                                            bool async, CollectiveOptions opt) {
-  DPC_ERROR_IF(!in || !out, "null buffer");
-  DPC_ERROR_IF(in_count == 0, "zero element count");
+std::shared_ptr<Task> Task::CreateAllGather(Context &ctx, bool async, void const *sendbuf, void *recvbuf,
+                                            uint64_t sendcount, DataType type, CollectiveOptions opt) {
+  DPC_ERROR_IF(!sendbuf, "null sendbuf");
+  DPC_ERROR_IF(!recvbuf, "null recvbuf");
   DPC_ERROR_IF(opt.quantization > 0, "quantization not supported for allgather");
   DPC_ERROR_IF(opt.pipes > 0, "pipes not supported for allgather");
 
-  uint64_t out_count = in_count * ctx.world;
-
-  return std::shared_ptr<Task>(
-      new Task(ctx, Collective::AllGather, ReduceOp::Sum, in, out, in_count, out_count, type, async, opt));
+  return std::shared_ptr<Task>(new Task(ctx, async, sendbuf, recvbuf, sendcount, sendcount * ctx.world, type,
+                                        ReduceOp::Sum, Collective::AllGather, opt));
 }
 
 // --- lifecycle ---
-
 
 Task::Status Task::wait() {
   std::unique_lock<std::mutex> lock(statusMutex);
@@ -139,6 +156,22 @@ std::string_view Task::getStatusString(Task::Status s) {
 }
 
 std::string_view Task::getStatusString() const { return getStatusString(status); }
+
+std::string const &Task::toString() const {
+  if (str.empty()) {
+    str = fmt::format("task {}.{} [{} x {}] {} > {}", id, collectiveName(coll), sendcount, datatypeToString(type),
+                      sendbuf, recvbuf);
+
+    // Debug("new-task {} [{} x {}] {} > {} {}-pipe{}{}{}{} {}", name, len, datatypeString(type), in, out, opt.pipes,
+    //       opt.prescaled ? " prescaled" : "", opt.averaging ? " average" : "",
+    //       opt.quantization ? fmt::format(" quant.{:d}", opt.quantization) : "",
+    //       opt.sa_world == ctx.world ? " su"
+    //                                 : fmt::format(" sa.{}{}", opt.sa_world, opt.sa_preemptive ? ".preemptive" : ""),
+    //       extra_info);
+  }
+
+  return str;
+}
 
 bool Task::isRunning() const { return status == Status::Running; }
 bool Task::isFinished() const { return status >= Status::Completed; }
@@ -183,8 +216,8 @@ bool Task::abort() { return setStatus(Status::Aborted); }
 
 bool Task::setStatus(Status s) {
   std::lock_guard<std::mutex> lock(statusMutex);
-  if (status >= Completed) return false;  // already terminal
-  if (s <= status) return false;          // no backward non-terminal moves
+  if (status >= Completed) return false; // already terminal
+  if (s <= status) return false;         // no backward non-terminal moves
 
   if (s == Running) stats.time.start = std::chrono::steady_clock::now();
   status = s;
@@ -253,8 +286,8 @@ std::unordered_map<std::string, float> Task::getStats() {
   }
 
   float time_s = time_ms > 0.0f ? time_ms / 1000.0f : 1e-9f;
-  float elements = static_cast<float>(in_count);
-  float bytes = static_cast<float>(in_count * dtypeWidth(type));
+  float elements = static_cast<float>(sendcount);
+  float bytes = static_cast<float>(sendcount * dtypeWidth(type));
 
   out["time_ms"] = time_ms;
   // out["threads"] = static_cast<float>(stats.perf.threads.load());

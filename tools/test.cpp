@@ -10,13 +10,11 @@ int main(int argc, const char** argv) {
 
   dpc::Context ctx(0, 10, dpc::DeviceConfig::DefaultTofinoD, cfg);
 
-  // dpc::net::print_ifaces();
-  // ctx.print();
+  std::vector<uint32_t> data(1024);
 
-  uint32_t size = 1024;
-  uint32_t *data = &size;
-
-  ctx.AllReduce(data, data, size, dpc::DataType::I32, dpc::ReduceOp::Sum);
+  ctx.AllReduceAsync(&data[0], &data[0], data.size(), dpc::DataType::U32, dpc::ReduceOp::Sum);
+  ctx.AllReduceAsync(&data[0], &data[0], data.size(), dpc::DataType::U32);
+  ctx.AllReduceAsync(&data[0], &data[0], data.size(), dpc::DataType::U32);
 
   return 0;
 }

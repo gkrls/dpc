@@ -51,24 +51,15 @@ public:
   int waitAll();
 
 public:
-  // reduce: in and out and count elements, out only at root
-  std::shared_ptr<Task> ReduceAsync(void *out, void *in, uint32_t count, DataType type, uint32_t root,
-                                    CollectiveOptions const &opt = {});
-  // reduce_scatter: in has count * nranks elements, out has count elements
-  std::shared_ptr<Task> ReduceScatterAsync(void *out, void *in, uint32_t count, DataType type,
-                                           CollectiveOptions const &opt = {});
-  // allreduce: in and out and count elements
-  std::shared_ptr<Task> AllReduceAsync(void *out, void *in, uint32_t count, DataType type, ReduceOp op,
+  std::shared_ptr<Task> AllReduceAsync(void const *sendbuf, void *recvbuf, uint64_t count, DataType type,
+                                       ReduceOp op = ReduceOp::Sum, CollectiveOptions const &opt = {});
+  std::shared_ptr<Task> AllGatherAsync(void const *sendbuf, void *recvbuf, uint64_t sendcount, DataType type,
                                        CollectiveOptions const &opt = {});
-  // allgather: in has count elements, out has count * world elements
-  std::shared_ptr<Task> AllGatherAsync(void *out, void *in, uint32_t count, DataType type,
-                                       CollectiveOptions const &opt);
 
-  Task::Status Reduce(void *out, void *in, uint32_t count, DataType type, ReduceOp op, uint32_t root,
-                      CollectiveOptions const &opt = {});
-  Task::Status ReduceScatter(void *out, void *in, uint32_t count, DataType type, CollectiveOptions const &opt = {});
-  Task::Status AllReduce(void *out, void *in, uint32_t count, DataType type, ReduceOp op, CollectiveOptions const &opt = {});
-  Task::Status AllGather(void *out, void *in, uint32_t count, DataType type, CollectiveOptions const &opt = {});
+  Task::Status AllReduce(void const *sendbuf, void *recvbuf, uint64_t count, DataType type, ReduceOp op = ReduceOp::Sum,
+                         CollectiveOptions const &opt = {});
+  Task::Status AllGather(void const *sendbuf, void *recvbuf, uint64_t sendcount, DataType type,
+                         CollectiveOptions const &opt = {});
 
 public:
   const uint16_t rank = 0;
@@ -79,6 +70,7 @@ public:
   class Scheduler {
   public:
     virtual ~Scheduler() = default;
+    virtual std::string name() = 0;
     virtual void start() = 0;
     virtual void stop() = 0;
     virtual void submit(std::shared_ptr<Task> task) = 0;
@@ -112,12 +104,9 @@ private:
 
   std::mutex tracking_mutex;
   std::unordered_map<uint64_t, std::shared_ptr<Task>> tracking_tasks;
-
-
 };
 
- // scheduler stuff
-
+// scheduler stuff
 
 } // namespace dpc
 

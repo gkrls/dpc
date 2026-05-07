@@ -4,6 +4,9 @@
 #include "dpc/util/log.h"
 #include <stdexcept>
 
+#ifndef __FILE_NAME__
+#define __FILE_NAME__ __FILE__
+#endif
 // auto fullfmt = fmt::format("dpc.assert {}:{}: {}", __FILE_NAME__, __LINE__, (fstr));
 
 #ifndef NDEBUG
@@ -30,7 +33,6 @@
 #define DPC_ERROR(fstr, ...)                                                                                           \
   do {                                                                                                                 \
     auto msg = fmt::format("{}:{}: " fstr, __FILE_NAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__);                        \
-    fmt::println(stderr, "dpc.error:  {}", msg);                                                                       \
     throw std::runtime_error(msg);                                                                                     \
   } while (0)
 
