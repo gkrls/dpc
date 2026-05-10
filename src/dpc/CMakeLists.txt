@@ -158,7 +158,7 @@ endforeach()
 
 
 if(DPC_TRACE OR CMAKE_BUILD_TYPE STREQUAL "Debug")
-  target_compile_definitions(dpc_objects PUBLIC DPC_ENABLE_TRACE)
+  # target_compile_definitions(dpc_objects PUBLIC DPC_ENABLE_TRACE)
   target_compile_definitions(dpc INTERFACE DPC_ENABLE_TRACE)
 endif()
 

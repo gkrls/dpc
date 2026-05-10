@@ -4,7 +4,6 @@
 #include "dpc/task.h"
 #include "dpc/util/error.h"
 #include "dpc/util/log.h"
-#include <iostream>
 #include <memory>
 #include <mutex>
 
@@ -18,28 +17,28 @@ NoopBackend::NoopBackend(Context &ctx, NoopConfig const &conf) : Backend(ctx, Ba
 
 void NoopBackend::start() {
   std::call_once(start_flag, [this] {
-    DPC_DEBUG("NoopBackend starting...");
-    state = State::Running;
+    state_ = State::Running;
     for (auto &w : workers) w->start();
   });
 }
 
 void NoopBackend::stop() {
   std::call_once(stop_flag, [this] {
-    DPC_DEBUG("NoopBackend stoping...");
+    state_ = State::Stopping; // or whatever your terminal value is
     for (auto &w : workers) w->stop();
     for (auto &w : workers) w->join();
+    state_ = State::Stopped;
   });
 }
 
 bool NoopBackend::push(std::shared_ptr<Task> task) {
   start();
   DPC_ERROR_IF(task->getStatus() >= Task::Submitted, "task {} already submitted to backend", task->name);
-  if (state != State::Running) return false;
+  if (state_ != State::Running) return false;
   {
     std::lock_guard<std::mutex> lock(tasks_mutex);
-    if (tasks.find(task->id) != tasks.end()) return false;
-    tasks[task->id] = conf.threads;
+    auto [it, inserted] = tasks.try_emplace(task->id, TaskState{conf.threads, Task::Completed});
+    if (!inserted) return false;
   }
   task->setStatus(Task::Submitted);
   for (auto &worker : workers) worker->push(task);
@@ -52,19 +51,20 @@ void NoopBackend::notify(uint16_t tid, std::shared_ptr<Task> task, Task::Status 
     return;
   }
 
-  if (status == Task::Failed) { task->setStatus(Task::Failed); }
-
   std::lock_guard<std::mutex> lock(tasks_mutex);
   auto it = tasks.find(task->id);
-  if (it->second.fetch_sub(1) == 1) {
-    task->setStatus(Task::Completed);
+  if (it == tasks.end()) return;
+
+  // Promote to worse status if this worker reported worse
+  if (status > it->second.worst) it->second.worst = status;
+
+  if (--it->second.remaining == 0) {
+    task->setStatus(it->second.worst);
     tasks.erase(it);
   }
 }
 
-void NoopBackend::print(bool details) const {
-  DPC_INFO("BCK: {}, workers={}", name(), conf.threads);
-}
+void NoopBackend::print(bool details) const { DPC_INFO("BCK: {}, workers={}", name(), conf.threads); }
 
 Worker::Worker(uint16_t tid, NoopBackend &backend) : tid(tid), backend(backend), thread(&Worker::loop, this){};
 
@@ -74,20 +74,22 @@ Task::Status Worker::execute(std::shared_ptr<Task> task) {
   return Task::Completed;
 };
 
-void Worker::start() {
-  std::call_once(start_flag, [this] {
-    running = true;
-    cv.notify_one();
-  });
-}
+// void Worker::start() {
+//   std::call_once(start_flag, [this] {
+//     running = true;
+//     cv.notify_one();
+//   });
+// }
 
-void Worker::stop() {
-  std::call_once(stop_flag, [this] {
-    running = false;
-    cv.notify_one();
-  });
-}
+// void Worker::stop() {
+//   std::call_once(stop_flag, [this] {
+//     running = false;
+//     cv.notify_one();
+//   });
+// }
 
+void Worker::start() { cv.notify_one(); }
+void Worker::stop() { cv.notify_one(); }
 void Worker::join() {
   if (thread.joinable()) thread.join();
 }
@@ -98,21 +100,39 @@ void Worker::push(std::shared_ptr<Task> task) {
 }
 
 void Worker::loop() {
+  // Phase 1: park until backend leaves Init (start() called)
   {
     std::unique_lock<std::mutex> lock(wait_mutex);
-    cv.wait(lock, [this] { return running.load(); });
+    cv.wait(lock, [this] { return backend.state_ != Backend::State::Init; });
   }
 
-  while (true) {
+  // Phase 2: run until backend leaves Running
+  while (backend.state_ == Backend::State::Running) {
     std::shared_ptr<Task> task;
     if (queue.try_pop(task)) {
       backend.notify(tid, task, Task::Running);
       backend.notify(tid, task, execute(task));
       continue;
     }
-
     std::unique_lock<std::mutex> lock(wait_mutex);
-    cv.wait(lock, [this] { return queue.pending() > 0 || !running.load(); });
-    if (!running && queue.pending() == 0) break;
+    // Wait until we actually have a task or the backend is stopped
+    cv.wait(lock, [this] { return queue.pending() > 0 || backend.state_ != Backend::State::Running; });
   }
+
+  // Phase 3: drain
+  std::shared_ptr<Task> task;
+  while (queue.try_pop(task)) { backend.notify(tid, task, Task::Aborted); }
+
+  // while (true) {
+  //   std::shared_ptr<Task> task;
+  //   if (queue.try_pop(task)) {
+  //     backend.notify(tid, task, Task::Running);
+  //     backend.notify(tid, task, execute(task));
+  //     continue;
+  //   }
+
+  //   std::unique_lock<std::mutex> lock(wait_mutex);
+  //   cv.wait(lock, [this] { return queue.pending() > 0 || !running.load(); });
+  //   if (!running && queue.pending() == 0) break;
+  // }
 }

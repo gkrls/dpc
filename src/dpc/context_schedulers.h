@@ -1,6 +1,8 @@
 #ifndef DPC_SCHEDULER_H
 #define DPC_SCHEDULER_H
 
+#include <condition_variable>
+#include <mutex>
 #include <queue>
 #include <thread>
 
@@ -10,15 +12,19 @@ namespace dpc {
 
 class FIFOScheduler : public Context::Scheduler {
 public:
-  FIFOScheduler(Context &ctx) : ctx(ctx) {}
+  FIFOScheduler(Context &ctx, bool use_thread = true) : ctx(ctx), use_thread(use_thread) {}
 
-  std::string name() override { return "fifo"; }
+  std::string name() override { return use_thread ? "fifo-threaded" : "fifo-inline"; }
 
   void start() override {
-    thread = std::thread([this] { loop(); });
+    if (use_thread) {
+      thread = std::thread([this] { loop(); });
+    }
   }
 
   void stop() override {
+    if (!use_thread) return;
+
     {
       std::lock_guard<std::mutex> lock(mutex);
       stopped = true;
@@ -28,11 +34,17 @@ public:
   }
 
   void submit(std::shared_ptr<Task> task) override {
-    {
-      std::lock_guard<std::mutex> lk(mutex);
-      queue.push(task);
+    if (use_thread) {
+      // Background Mode: Queue the task and wake the worker
+      {
+        std::lock_guard<std::mutex> lk(mutex);
+        queue.push(task);
+      }
+      cv.notify_one();
+    } else {
+      // Inline Mode: Execute immediately on the caller's thread
+      ctx.execute(task);
     }
-    cv.notify_one();
   }
 
 private:
@@ -43,6 +55,7 @@ private:
       while (!queue.empty()) {
         auto task = queue.front();
         queue.pop();
+        // Unlock while executing to allow other threads to submit tasks
         lock.unlock();
         ctx.execute(task);
         lock.lock();
@@ -51,11 +64,13 @@ private:
   }
 
   Context &ctx;
+  bool use_thread;
+  bool stopped = false;
+
   std::thread thread;
   std::mutex mutex;
   std::condition_variable cv;
   std::queue<std::shared_ptr<Task>> queue;
-  bool stopped = false;
 };
 
 } // namespace dpc

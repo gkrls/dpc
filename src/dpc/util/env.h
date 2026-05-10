@@ -44,8 +44,7 @@ inline std::optional<int> getint(const char *name, std::initializer_list<int> al
   return static_cast<int>(res);
 }
 
-inline std::optional<std::string_view> getstr(const char *name,
-                                                 std::initializer_list<std::string_view> allowed = {}) {
+inline std::optional<std::string_view> getstr(const char *name, std::initializer_list<std::string_view> allowed = {}) {
   const char *e = std::getenv(name);
   if (!e) return std::nullopt;
   std::string_view v(e);
@@ -63,7 +62,7 @@ inline std::optional<std::string_view> getstr(const char *name,
 // Logging wrapper
 
 namespace detail {
-template <typename T> T log(const char *name, T result) {
+template <typename T> T env_with_log(const char *name, T result) {
   const char *e = std::getenv(name);
   if (!e) return result;
   if (result) printf("dpc: %s set by environment to %s\n", name, e);
@@ -78,12 +77,13 @@ template <typename T> T log(const char *name, T result) {
 // Public Macros — parse + log once at static init
 // =====================================================================
 
-#define DPC_ENV_BOOL(VAR, ENV) static const auto VAR = dpc::env::detail::log(ENV, dpc::env::getbool(ENV))
+#define DPC_ENV_BOOL(VAR, ENV)                                                                                         \
+  static const auto VAR = dpc::env::detail::env_with_log(ENV, dpc::env::detail::getbool(ENV))
 #define DPC_ENV_UINT(VAR, ENV, ...)                                                                                    \
-  static const auto VAR = dpc::env::detail::log(ENV, dpc::env::getuint(ENV, {__VA_ARGS__}))
+  static const auto VAR = dpc::env::detail::env_with_log(ENV, dpc::env::getuint(ENV, {__VA_ARGS__}))
 #define DPC_ENV_INT(VAR, ENV, ...)                                                                                     \
-  static const auto VAR = dpc::env::detail::log(ENV, dpc::env::getint(ENV, {__VA_ARGS__}))
+  static const auto VAR = dpc::env::detail::env_with_log(ENV, dpc::env::getint(ENV, {__VA_ARGS__}))
 #define DPC_ENV_STR(VAR, ENV, ...)                                                                                     \
-  static const auto VAR = dpc::env::detail::log(ENV, dpc::env::getstr(ENV, {__VA_ARGS__}))
+  static const auto VAR = dpc::env::detail::env_with_log(ENV, dpc::env::getstr(ENV, {__VA_ARGS__}))
 
 #endif // !DPC_UTIL_ENV_H

@@ -10,12 +10,12 @@
 
 using namespace dpc;
 
-std::shared_ptr<Backend> Backend::create(Context &ctx, Backend::Kind kind) {
+std::unique_ptr<Backend> Backend::create(Context &ctx, Backend::Kind kind) {
   switch (kind) {
-  case Noop: return std::shared_ptr<NoopBackend>(new NoopBackend(ctx));
+  case Noop: return std::unique_ptr<NoopBackend>(new NoopBackend(ctx));
   case Dpdk:
 #if DPC_DPDK_ENABLED
-    return std::make_shared<DpdkBackend>(ctx);
+    return std::make_unique<DpdkBackend>(ctx);
 #else
     DPC_FATAL("DPC built without DPDK support. Rebuild with DPC_DPDK=ON");
 #endif
@@ -23,9 +23,9 @@ std::shared_ptr<Backend> Backend::create(Context &ctx, Backend::Kind kind) {
   }
 }
 
-std::shared_ptr<Backend> Backend::create(Context &ctx, BackendConfig const &conf) {
+std::unique_ptr<Backend> Backend::create(Context &ctx, BackendConfig const &conf) {
   if (conf.is(Backend::Noop))
-    return std::shared_ptr<NoopBackend>(new NoopBackend(ctx, static_cast<const NoopConfig &>(conf)));
+    return std::unique_ptr<NoopBackend>(new NoopBackend(ctx, static_cast<const NoopConfig &>(conf)));
 #if DPC_DPDK_ENABLED
   else if (conf.is(Backend::Dpdk)) return std::make_shared<DpdkBackend>(ctx, static_cast<const DpdkConfig &>(conf));
 #endif

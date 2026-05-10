@@ -1,6 +1,7 @@
 #ifndef DPC_CONTEXT_H
 #define DPC_CONTEXT_H
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <memory>
@@ -8,7 +9,6 @@
 
 #include "dpc/backend/backend.h"
 #include "dpc/device.h"
-#include "dpc/types.h"
 
 namespace dpc {
 
@@ -17,8 +17,9 @@ class SocketBackend;
 
 class Context final {
 public:
-  enum State { Created = 1, Running, Finalizing, Finalized };
+  enum State { Init = 1, Running, Stopping, Stopped };
   friend class FIFOScheduler;
+  friend class Task;
   // friend class Backend;
   // friend class SocketBackend;
   // friend class Task;
@@ -42,9 +43,10 @@ public:
   operator uint32_t() const { return id; }
 
   void print();
-  bool usesScheduler() { return scheduler != nullptr; }
+  bool hasScheduler() { return scheduler_ != nullptr; }
   bool isRunning() { return state_ == Running; }
-  bool isFinalized() { return state_ == Finalized; }
+  bool isStopping() { return state_ == Stopping; }
+  bool isStopped() { return state_ == Stopped; }
 
   Task::Status wait(std::shared_ptr<Task> task);
   Task::Status wait(std::shared_ptr<Task> task, std::chrono::milliseconds timeout);
@@ -77,13 +79,19 @@ public:
   };
 
 private:
-  /// The scheduler loop of this context, running on its own thread
-  /// Ideally we should make the context accept a scheduler object, but this is
-  /// fine for now.
   void start();
   void stop();
   void watchdog();
-  void schedule(std::shared_ptr<Task> t);
+
+  std::shared_ptr<Task> submit(std::shared_ptr<Task> t);
+  /// Release a task from the context's tracking set.
+  ///
+  /// Called by Task::setStatus() when the task reaches a terminal status
+  /// (Completed / Aborted / Failed). Removes the task from tracking_tasks and
+  /// increments the appropriate lifetime counter based on its final status.
+  ///
+  /// Idempotent: releasing a task that is no longer tracked is a no-op.
+  void release(Task &t);
   void execute(std::shared_ptr<Task> t);
 
 private:
@@ -95,13 +103,20 @@ private:
   std::once_flag fini_flag;
   std::mutex state_mutex;
 
-  std::shared_ptr<Device> device_ = nullptr;
-  std::shared_ptr<Backend> backend_ = nullptr;
+  std::unique_ptr<Device> device_ = nullptr;
+  std::unique_ptr<Backend> backend_ = nullptr;
+  std::unique_ptr<Scheduler> scheduler_ = nullptr;
 
-  std::shared_ptr<Scheduler> scheduler = nullptr;
   std::thread watchdog_thread;
+  std::atomic<pid_t> watchdog_thread_id{0};
   std::chrono::milliseconds timeout;
 
+  // Task tracking
+  std::atomic<uint64_t> submitted_{0};
+  std::atomic<uint64_t> completed_{0};
+  std::atomic<uint64_t> aborted_{0};
+  std::atomic<uint64_t> failed_{0};
+  std::atomic<uint64_t> rejected_{0};
   std::mutex tracking_mutex;
   std::unordered_map<uint64_t, std::shared_ptr<Task>> tracking_tasks;
 };

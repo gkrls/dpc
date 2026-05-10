@@ -2,8 +2,7 @@
 #define DPC_BACKEND_H
 
 #include "dpc/task.h"
-#include "dpc/types.h"
-#include "dpc/util/error.h"
+#include <atomic>
 #include <string>
 
 namespace dpc {
@@ -19,7 +18,7 @@ class Backend {
   friend class Context;
 
 public:
-  // BACKEND REGISTRATION
+  // ============= BACKEND REGISTRATION =============
   enum Kind {
     Noop,
     Dpdk,
@@ -30,6 +29,7 @@ private:
       {Backend::Noop, "noop"},
       {Backend::Dpdk, "dpdk"},
   };
+  // ================================================
 
 public:
   static std::string getName(Backend::Kind kind);
@@ -43,13 +43,15 @@ public:
   //   return it->second;
   // }
   // static std::string getName(BackendConfig const& conf);
-  enum State { Created = 1, Running, Finalizing, Finalized };
+  enum State { Init = 1, Running, Stopping, Stopped };
 
   Backend() = delete;
   Backend(Backend &&) = delete;
   Backend(Backend const &) = delete;
   void operator=(Backend const &) = delete;
   Backend &operator=(Backend &&) = delete;
+
+  virtual ~Backend() = default;
 
   virtual std::string name() const { return name_; }
   /**
@@ -73,7 +75,14 @@ public:
    */
   virtual Context &context() const { return ctx; }
 
+  /**
+   * @brief Check if a backend is a certain kind
+   */
   bool is(Backend::Kind kind) const { return kind_ == kind; }
+  /**
+   * @brief Retrieve the backend's state
+   */
+  State state() const { return state_.load(); }
 
 protected:
   Backend(Context &ctx, Backend::Kind kind) : ctx(ctx), kind_(kind), name_(getName(kind)) {}
@@ -99,14 +108,16 @@ protected:
    * If opts is a subclass of BackendOptions the apropriate backend is created and returned
    * If not, nullptr is returned, signifying an error
    */
-  static std::shared_ptr<Backend> create(Context &ctx, BackendConfig const &conf);
-  static std::shared_ptr<Backend> create(Context &ctx, Kind kind);
+  static std::unique_ptr<Backend> create(Context &ctx, BackendConfig const &conf);
+  static std::unique_ptr<Backend> create(Context &ctx, Kind kind);
 
   Context &ctx;
 
-private:
   const std::string name_;
-  Backend::Kind kind_;
+
+  const Backend::Kind kind_;
+
+  std::atomic<State> state_{State::Init};
 };
 
 class BackendConfig {

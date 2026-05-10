@@ -1,6 +1,5 @@
 #include "dpc/task.h"
 #include "dpc/context.h"
-#include "dpc/types.h"
 #include "dpc/util/error.h"
 #include "dpc/util/log.h"
 #include "fmt/core.h"
@@ -159,8 +158,8 @@ std::string_view Task::getStatusString() const { return getStatusString(status);
 
 std::string const &Task::toString() const {
   if (str.empty()) {
-    str = fmt::format("task {}.{} [{} x {}] {} > {}", id, collectiveName(coll), sendcount, datatypeToString(type),
-                      sendbuf, recvbuf);
+    str = fmt::format("task {}.{} [{} x {}] {} > {}{}", id, collectiveName(coll), sendcount, datatypeToString(type),
+                      sendbuf, recvbuf, async ? " async" : " sync");
 
     // Debug("new-task {} [{} x {}] {} > {} {}-pipe{}{}{}{} {}", name, len, datatypeString(type), in, out, opt.pipes,
     //       opt.prescaled ? " prescaled" : "", opt.averaging ? " average" : "",
@@ -184,34 +183,6 @@ bool Task::isInteger() const { return !isFloatingPoint(); }
 bool Task::isSigned() const { return type != DataType::U32; }
 bool Task::isUnsigned() const { return type == DataType::U32; }
 
-// Task::Status Task::setStatus(Status s) {
-//   std::lock_guard<std::mutex> lock(statusMutex);
-//   Status old = this->status;
-
-//   if (s == Status::Aborted && old > s) return old;
-
-//   DPC_ERROR_IF(static_cast<int>(s) < static_cast<int>(old), "task {}: invalid status transition '{}' -> '{}'", name,
-//                getStatusString(old), getStatusString(s));
-
-//   // Cannot go back to an older state
-//   if (s <= old) return old;
-
-//   if (s == Status::Running) stats.time.start = std::chrono::steady_clock::now();
-//   this->status = s;
-
-//   if (isFinished()) {
-//     if (s == Status::Completed) stats.time.finish = std::chrono::steady_clock::now();
-
-//     statusCv.notify_all();
-
-//     if (isAborted() && on_abort_cb) on_abort_cb(*this);
-//     else if (isCompleted() && on_complete_cb) on_complete_cb(*this);
-//     else if (isFailed() && on_error_cb) on_error_cb(*this);
-//   }
-
-//   return old;
-// }
-
 bool Task::abort() { return setStatus(Status::Aborted); }
 
 bool Task::setStatus(Status s) {
@@ -225,6 +196,7 @@ bool Task::setStatus(Status s) {
   if (status >= Completed) {
     if (s == Completed) stats.time.finish = std::chrono::steady_clock::now();
     statusCv.notify_all();
+    ctx.release(*this);
     if (isAborted() && on_abort_cb) on_abort_cb(*this);
     else if (isCompleted() && on_complete_cb) on_complete_cb(*this);
     else if (isFailed() && on_error_cb) on_error_cb(*this);

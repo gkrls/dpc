@@ -13,11 +13,26 @@
 #include <unordered_map>
 #include <vector>
 
-#include "dpc/types.h"
 
 namespace dpc {
 
 class Context;
+class Task;
+
+enum DataType   : uint8_t { I32, U32, F32 };
+enum Collective : uint8_t { AllReduce, AllGather, ReduceScatter };
+enum ReduceOp   : uint8_t { Sum = 0, Min, Max, Avg, Prod, __default__ = Sum};
+
+struct CollectiveOptions {
+  int quantization = 0;
+  int pipes = 0;
+  std::function<void(Task&)> on_complete = nullptr;
+  std::function<void(Task&)> on_abort = nullptr;
+  std::function<void(Task&)> on_error = nullptr;
+};
+
+constexpr uint8_t dtypeWidth(DataType) noexcept { return 4; }
+
 
 class Task {
 public:
@@ -92,7 +107,7 @@ public:
   bool isReduceScatter() const { return coll == Collective::ReduceScatter; }
   bool isQuantized() const { return opt.quantization > 0; }
 
-  // --- accessors ---
+  // --- accessors --- 
   std::string const &toString() const;
   Status getStatus() const { return status; }
   std::string_view getStatusString() const;
@@ -136,6 +151,9 @@ protected:
 private:
   Task(Context &ctx, bool async, const void *sendbuf, void *recvbuf, uint64_t sendcount, uint64_t recvcount,
        DataType type, ReduceOp reduce, Collective coll, CollectiveOptions opt);
+
+  std::shared_ptr<Task> submit(std::function<std::shared_ptr<Task>()> create);
+
   mutable std::string str;
   std::atomic<Status> status{Status::Created};
   std::mutex statusMutex;

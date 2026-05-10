@@ -40,14 +40,20 @@ public:
     Task::Status execute(std::shared_ptr<Task> task);
     NoopBackend &backend;
     uint16_t tid = 0;
-    std::thread thread;
     std::atomic<bool> running{false};
     std::mutex wait_mutex;
     std::condition_variable cv;
     std::once_flag start_flag;
     std::once_flag stop_flag;
     MPSCQueue<std::shared_ptr<Task>> queue;
+    std::thread thread;
   };
+
+  ~NoopBackend() noexcept override {
+    try {
+      stop();
+    } catch (...) {}
+  }
 
 private:
   NoopBackend(Context &ctx, NoopConfig const &conf = {});
@@ -70,12 +76,16 @@ private:
 private:
   void worker_loop();
 
-  State state;
+  struct TaskState {
+    uint16_t remaining = 1;
+    Task::Status worst = Task::Completed;
+  };
+  // std::atomic<State> state{Backend::Init};
   NoopConfig conf;
   std::once_flag start_flag;
   std::once_flag stop_flag;
   std::mutex tasks_mutex;
-  std::unordered_map<uint64_t, std::atomic<uint16_t>> tasks;
+  std::unordered_map<Task::id_t, TaskState> tasks;
   std::vector<std::unique_ptr<Worker>> workers;
 };
 

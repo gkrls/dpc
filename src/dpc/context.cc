@@ -1,12 +1,14 @@
 #include "dpc/context.h"
 #include "dpc/config.h"
 #include "dpc/device.h"
-#include "dpc/types.h"
+#include "dpc/task.h"
 #include "dpc/util/env.h"
 #include "dpc/util/error.h"
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <ratio>
+#include <string_view>
 #include <thread>
 #include <unistd.h>
 
@@ -26,10 +28,20 @@ static uint64_t getUniqueID() {
   return count_.fetch_add(1);
 }
 
-DPC_ENV_BOOL(DPC_SCHEDULER, "DPC_SCHEDULER");
-DPC_ENV_UINT(DPC_TIMEOUT, "DPC_TIMEOUT");
+DPC_ENV_STR(kScheduler, "DPC_SCHEDULER", "off", "on", "fifo", "fifo-threaded");
+DPC_ENV_UINT(kTimeout, "DPC_TIMEOUT");
 
 } // namespace
+
+std::unique_ptr<Context::Scheduler> create_scheduler(Context &ctx, const std::string_view sched) {
+  const std::string kDefaultScheduler = "fifo-threaded";
+  if (sched == "off") return nullptr;
+  else if (sched == "on") return std::make_unique<FIFOScheduler>(ctx, false);
+  else if (sched == "fifo") return std::make_unique<FIFOScheduler>(ctx, false);
+  else if (sched == "fifo-threaded") return std::make_unique<FIFOScheduler>(ctx, true);
+  DPC_UNREACHABLE("bad scheduler name");
+  return nullptr;
+}
 
 Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, uint32_t timeout)
     : Context(rank, world, dc, "noop", timeout) {}
@@ -38,15 +50,18 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, std::str
 
 Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend::Kind kind, uint32_t timeout)
     : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
-      state_(Context::Created), timeout(timeout) {
+      state_(Context::Init), timeout(timeout) {
   DPC_FATAL_IF(id > 0, "multiple contexts not supported yet");
 
-  this->device_ = std::make_shared<Device>(dc);
+  this->device_ = std::make_unique<Device>(dc);
   this->backend_ = Backend::create(*this, kind);
   DPC_FATAL_IF(!this->backend_, "failed to create backend '{}'", Backend::getName(kind)); // options().name);
 
-  if (DPC_SCHEDULER.value_or(false)) this->scheduler = std::make_unique<FIFOScheduler>(*this);
-  if (DPC_TIMEOUT) this->timeout = std::chrono::milliseconds(*DPC_TIMEOUT);
+  if (kScheduler.has_value()) this->scheduler_ = create_scheduler(*this, *kScheduler);
+  if (kTimeout.has_value()) this->timeout = std::chrono::milliseconds(*kTimeout);
+
+  // this->scheduler = std::make_unique<FIFOScheduler>(*this);
+  // if (DPC_TIMEOUT) this->timeout = std::chrono::milliseconds(*DPC_TIMEOUT);
 
   // PrintContextInfo(*this);
   print();
@@ -55,16 +70,15 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend:
 
 Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc, uint32_t timeout)
     : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
-      state_(Context::Created), timeout(timeout) {
+      state_(Context::Init), timeout(timeout) {
   DPC_FATAL_IF(id > 0, "multiple contexts not supported yet");
 
-  this->device_ = std::make_shared<Device>(dc);
+  this->device_ = std::make_unique<Device>(dc);
   this->backend_ = Backend::create(*this, bc);
   DPC_FATAL_IF(!this->backend_, "failed to create backend '{}'", bc.getBackendName()); // options().name);
 
-  if (DPC_SCHEDULER.value_or(false)) this->scheduler = std::make_unique<FIFOScheduler>(*this);
-  if (DPC_TIMEOUT) this->timeout = std::chrono::milliseconds(*DPC_TIMEOUT);
-
+  if (kScheduler.has_value()) this->scheduler_ = create_scheduler(*this, *kScheduler);
+  if (kTimeout.has_value()) this->timeout = std::chrono::milliseconds(*kTimeout);
   // PrintContextInfo(*this);
   print();
   start();
@@ -74,7 +88,7 @@ Context::~Context() { stop(); }
 
 void Context::print() {
   DPC_INFO("{}", std::string(100, '='));
-  DPC_INFO("CTX: rank={} world={} scheduler={} watchdog={} (build {} {})", rank, world, usesScheduler() ? "on" : "off",
+  DPC_INFO("CTX: rank={} world={} scheduler={} watchdog={} (build {} {})", rank, world, hasScheduler() ? "on" : "off",
            this->timeout.count() ? fmt::format("{}ms", this->timeout.count()) : "off", DPC_BUILD_TYPE,
            DPC_AVX512_AVAILABLE ? "avx512"
            : DPC_AVX2_AVAILABLE ? "avx2"
@@ -86,17 +100,20 @@ void Context::print() {
 
 void Context::start() {
   std::call_once(init_flag, [this] {
-    DPC_DEBUG("starting backend '{}' for context {}", backend().name(), name_);
+    DPC_DEBUG("{} starting backend {}", name_, backend_->name());
+    // DPC_DEBUG("starting backend '{}' for context {}", backend().name(), name_);
     backend().start();
 
-    if (scheduler) {
-      DPC_DEBUG("starting scheduler '{}' for context {}", scheduler->name(), name_);
-      scheduler->start();
+    if (scheduler_) {
+      DPC_DEBUG("{} starting scheduler {}", name_, scheduler_->name());
+      // DPC_DEBUG("starting scheduler '{}' for context {}", scheduler->name(), name_);
+      scheduler_->start();
     }
 
     if (timeout.count()) {
-      DPC_DEBUG("starting watchdog thread for context {}", name_);
       watchdog_thread = std::thread(&Context::watchdog, this);
+      while (watchdog_thread_id.load(std::memory_order_acquire) == 0) std::this_thread::yield();
+      DPC_DEBUG("{} starting watchdog thread {}", name_, watchdog_thread_id.load());
     }
 
     {
@@ -109,56 +126,83 @@ void Context::start() {
 
 void Context::stop() {
   std::call_once(fini_flag, [this] {
-    DPC_DEBUG("Context '{}' stopping...", this->name_);
+    DPC_DEBUG("ctx-{} stopping by thread {}", id, gettid());
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    // Make sure no new tasks are accepted
     {
       std::lock_guard<std::mutex> lock(state_mutex);
-      state_ = Context::Finalizing;
-      state_cv.notify_one();
+      state_ = Context::Stopping;
+      // state_cv.notify_one();
     }
 
-    if (scheduler) scheduler->stop();
+    // Snapshot what's outstanding before we tear anything down
+    size_t running = 0, queued = 0;
+    {
+      std::lock_guard<std::mutex> lock(tracking_mutex);
+      for (auto &[id, task] : tracking_tasks) {
+        if (task->isFinished()) continue;
+        if (task->isRunning()) ++running;
+        else if (!task->isFinished()) ++queued;
+      }
+    }
+
+    DPC_INFO("ctx-{} stopping with {} running, {} queued tasks", this->id, running, queued);
+
+    if (scheduler_) scheduler_->stop();
 
     backend().stop();
 
-    if (watchdog_thread.joinable()) watchdog_thread.join();
-
-    {
-      std::lock_guard<std::mutex> lock(tracking_mutex);
-      tracking_tasks.clear();
-    }
-
     {
       std::lock_guard<std::mutex> lock(state_mutex);
-      state_ = Context::Finalized;
+      state_ = Context::Stopped;
       state_cv.notify_all();
     }
-    DPC_INFO("ctx-{} killed by thread {}", id, gettid());
+
+    if (watchdog_thread.joinable()) watchdog_thread.join();
+
+    // {
+    //   std::lock_guard<std::mutex> lock(tracking_mutex);
+    //   tracking_tasks.clear();
+    // }
+
+    // DPC_INFO("ctx-{} killed by thread {}", id, gettid());
   });
 }
 
-void Context::schedule(std::shared_ptr<Task> task) {
-  DPC_ERROR_IF(&task->ctx != this, "task {} not created by this context", task->name);
-  DPC_ERROR_IF(task->getStatus() > Task::Created, "task {} with status '{}'", task->name, task->getStatusString());
+void Context::release(Task &task) {
+  // DPC_DEBUG("release: task {} status={}", task.id, task.getStatusString());
+  std::lock_guard<std::mutex> lock(tracking_mutex);
+  if (tracking_tasks.erase(task.id) == 0) return;
+  switch (task.getStatus()) {
+  case Task::Completed: completed_.fetch_add(1); break;
+  case Task::Aborted: aborted_.fetch_add(1); break;
+  case Task::Failed: failed_.fetch_add(1); break;
+  default: break;
+  }
+}
 
-  {
-    std::lock_guard<std::mutex> lock(state_mutex);
-    DPC_ERROR_IF(state_ >= Context::Finalizing, "cannot schedule task on finalizing/finalized context");
+std::shared_ptr<Task> Context::submit(std::shared_ptr<Task> task) {
+  if (state_ != Running) {
+    rejected_.fetch_add(1);
+    task->setStatus(Task::Aborted);
+    return task;
   }
 
-  // Mark task waitable first, to avoid task finishing really fast before we can wait on it
   {
     std::lock_guard<std::mutex> lock(tracking_mutex);
-    tracking_tasks[task->id] = task;
+    auto [it, inserted] = tracking_tasks.try_emplace(task->id, task);
+    // DPC_DEBUG("submitted: tracking_tasks now has {} entries", tracking_tasks.size());
+    DPC_FATAL_IF(!inserted, "duplicate task id {}", task->id);
+    submitted_.fetch_add(1);
   }
 
   DPC_DEBUG("new {}", task->toString());
 
-  // Queue the task
-  if (scheduler) {
-    scheduler->submit(task);
-  } else {
-    execute(task);
-  }
+  if (scheduler_) scheduler_->submit(task);
+  else execute(task);
+
+  return task;
 }
 
 void Context::execute(std::shared_ptr<Task> task) {
@@ -170,27 +214,52 @@ void Context::execute(std::shared_ptr<Task> task) {
 void Context::watchdog() {
   DPC_ERROR_IF(timeout == std::chrono::milliseconds::zero(), "watchdog should not run with timeout 0");
 
-  auto poll_interval = std::max(timeout / 10, std::chrono::milliseconds(100));
+  watchdog_thread_id.store(gettid(), std::memory_order_release);
+
+  auto poll_interval = std::clamp(timeout / 10, std::chrono::milliseconds(10), std::chrono::milliseconds(500));
+  // std::max(timeout / 10, std::chrono::milliseconds(100));
 
   std::unique_lock<std::mutex> state_lock(state_mutex);
   state_cv.wait(state_lock, [this] { return state_ >= Context::Running; });
 
-  while (state_ < Context::Finalizing) {
-    state_cv.wait_for(state_lock, std::chrono::milliseconds(poll_interval),
-                      [this] { return state_ >= Context::Finalizing; });
-    state_lock.unlock();
+  while (state_ < Context::Stopped) {
+    state_cv.wait_for(state_lock, poll_interval, [this] { return state_ >= Context::Stopped; });
 
+    if (state_ >= Context::Stopped) break;
+
+    state_lock.unlock();
     {
       std::lock_guard<std::mutex> tracking_lock(tracking_mutex);
       auto now = std::chrono::steady_clock::now();
+
       for (auto &[id, task] : tracking_tasks) {
-        if (task->isRunning() && (now - task->stats.time.start) > timeout) {
-          DPC_FATAL("watchdog: task {} did not finish in {}ms", task->name,
-                    std::chrono::duration_cast<std::chrono::milliseconds>(now - task->stats.time.start).count());
+        if (task->isRunning()) {
+          auto duration = now - task->stats.time.start;
+          if (duration > timeout) {
+            DPC_FATAL("watchdog: task {} did not finish within {} ms", task->name,
+                      std::chrono::duration_cast<std::chrono::milliseconds>(duration).count(), timeout.count());
+            // DPC_FATAL("watchdog: task {} timed out ({}ms > {}ms)", task->name,
+            //           std::chrono::duration_cast<std::chrono::milliseconds>(duration).count(), timeout.count());
+          }
         }
       }
     }
 
+    // {
+    //   std::lock_guard<std::mutex> tracking_lock(tracking_mutex);
+    //   auto now = std::chrono::steady_clock::now();
+    //   // DPC_DEBUG("watchdog poll: {} tasks tracked", tracking_tasks.size());
+    //   for (auto &[id, task] : tracking_tasks) {
+    //     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - task->stats.time.start).count();
+    //     // DPC_DEBUG("  task {} status={} running={} elapsed={}ms", task->name, task->getStatusString(),
+    //     // task->isRunning(),
+    //     //           elapsed);
+    //     if (task->isRunning() && (now - task->stats.time.start) > timeout) {
+    //       DPC_FATAL("watchdog: task {} did not finish in {}ms", task->name,
+    //                 std::chrono::duration_cast<std::chrono::milliseconds>(now - task->stats.time.start).count());
+    //     }
+    //   }
+    // }
     state_lock.lock();
   }
 
@@ -199,12 +268,21 @@ void Context::watchdog() {
 
 std::shared_ptr<Task> Context::AllReduceAsync(void const *sendbuf, void *recvbuf, uint64_t count, DataType type,
                                               ReduceOp op, CollectiveOptions const &opt) {
-  auto task = Task::CreateAllReduce(*this, true, sendbuf, recvbuf, count, type, op, opt);
-  schedule(task);
-  return task;
+  return submit(Task::CreateAllReduce(*this, true, sendbuf, recvbuf, count, type, op, opt));
 }
 
 Task::Status Context::AllReduce(void const *sendbuf, void *recvbuf, uint64_t count, DataType type, ReduceOp op,
                                 CollectiveOptions const &opt) {
   return AllReduceAsync(sendbuf, recvbuf, count, type, op, opt)->wait();
+}
+
+std::shared_ptr<Task> Context::AllGatherAsync(void const *sendbuf, void *recvbuf, uint64_t sendcount, DataType type,
+                                              CollectiveOptions const &opt) {
+
+  return submit(Task::CreateAllGather(*this, true, sendbuf, recvbuf, sendcount, type, opt));
+}
+
+Task::Status Context::AllGather(void const *sendbuf, void *recvbuf, uint64_t sendcount, DataType type,
+                                CollectiveOptions const &opt) {
+  return AllGatherAsync(sendbuf, recvbuf, sendcount, type, opt)->wait();
 }
