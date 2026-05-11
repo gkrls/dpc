@@ -20,7 +20,7 @@ class Context;
 class Task;
 
 enum DataType   : uint8_t { I32, U32, F32 };
-enum Collective : uint8_t { AllReduce, AllGather, ReduceScatter };
+enum Collective : uint8_t { AllReduce, AllGather, ReduceScatter, Reduce };
 enum ReduceOp   : uint8_t { Sum = 0, Min, Max, Avg, Prod, __default__ = Sum};
 
 struct CollectiveOptions {

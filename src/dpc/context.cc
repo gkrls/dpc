@@ -266,6 +266,26 @@ void Context::watchdog() {
   DPC_DEBUG("watchdog thread stopped");
 }
 
+std::shared_ptr<Task> Context::ReduceAsync(void const *sendbuf, void *recvbuf, uint64_t count, uint32_t root,
+                                           DataType type, ReduceOp op, CollectiveOptions const &opt) {
+  DPC_FATAL("Reduce collective not implemented");
+}
+
+Task::Status Context::Reduce(void const *sendbuf, void *recvbuf, uint64_t count, uint32_t root, DataType type,
+                             ReduceOp op, CollectiveOptions const &opt) {
+  DPC_FATAL("Reduce collective not implemented");
+}
+
+std::shared_ptr<Task> Context::ReduceScatterAsync(void const *sendbuf, void *recvbuf, uint64_t recvcount, DataType type,
+                                                  ReduceOp op, CollectiveOptions const &opt) {
+  return submit(Task::CreateReduceScatter(*this, true, sendbuf, recvbuf, recvcount, type, op, opt));
+}
+
+Task::Status Context::ReduceScatter(void const *sendbuf, void *recvbuf, uint64_t recvcount, DataType type, ReduceOp op,
+                                    CollectiveOptions const &opt) {
+  return ReduceScatterAsync(sendbuf, recvbuf, recvcount, type, op, opt)->wait();
+}
+
 std::shared_ptr<Task> Context::AllReduceAsync(void const *sendbuf, void *recvbuf, uint64_t count, DataType type,
                                               ReduceOp op, CollectiveOptions const &opt) {
   return submit(Task::CreateAllReduce(*this, true, sendbuf, recvbuf, count, type, op, opt));

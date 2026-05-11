@@ -9,6 +9,7 @@
 
 #include "dpc/backend/backend.h"
 #include "dpc/device.h"
+#include "dpc/task.h"
 
 namespace dpc {
 
@@ -53,11 +54,19 @@ public:
   int waitAll();
 
 public:
+  std::shared_ptr<Task> ReduceAsync(void const *sendbuf, void *recvbuf, uint64_t count, uint32_t root, DataType type,
+                                    ReduceOp op = ReduceOp::Sum, CollectiveOptions const &opt = {});
+  std::shared_ptr<Task> ReduceScatterAsync(void const *sendbuf, void *recvbuf, uint64_t recvcount, DataType type,
+                                           ReduceOp op = ReduceOp::Sum, CollectiveOptions const &opt = {});
   std::shared_ptr<Task> AllReduceAsync(void const *sendbuf, void *recvbuf, uint64_t count, DataType type,
                                        ReduceOp op = ReduceOp::Sum, CollectiveOptions const &opt = {});
   std::shared_ptr<Task> AllGatherAsync(void const *sendbuf, void *recvbuf, uint64_t sendcount, DataType type,
                                        CollectiveOptions const &opt = {});
 
+  Task::Status Reduce(void const *sendbuf, void *recvbuf, uint64_t count, uint32_t root, DataType type,
+                      ReduceOp op = ReduceOp::Sum, CollectiveOptions const &opt = {});
+  Task::Status ReduceScatter(void const *sendbuf, void *recvbuf, uint64_t recvcount, DataType type,
+                             ReduceOp op = ReduceOp::Sum, CollectiveOptions const &opt = {});
   Task::Status AllReduce(void const *sendbuf, void *recvbuf, uint64_t count, DataType type, ReduceOp op = ReduceOp::Sum,
                          CollectiveOptions const &opt = {});
   Task::Status AllGather(void const *sendbuf, void *recvbuf, uint64_t sendcount, DataType type,

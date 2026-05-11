@@ -158,15 +158,10 @@ std::string_view Task::getStatusString() const { return getStatusString(status);
 
 std::string const &Task::toString() const {
   if (str.empty()) {
-    str = fmt::format("task {}.{} [{} x {}] {} > {}{}", id, collectiveName(coll), sendcount, datatypeToString(type),
-                      sendbuf, recvbuf, async ? " async" : " sync");
-
-    // Debug("new-task {} [{} x {}] {} > {} {}-pipe{}{}{}{} {}", name, len, datatypeString(type), in, out, opt.pipes,
-    //       opt.prescaled ? " prescaled" : "", opt.averaging ? " average" : "",
-    //       opt.quantization ? fmt::format(" quant.{:d}", opt.quantization) : "",
-    //       opt.sa_world == ctx.world ? " su"
-    //                                 : fmt::format(" sa.{}{}", opt.sa_world, opt.sa_preemptive ? ".preemptive" : ""),
-    //       extra_info);
+    auto send_ty_str = fmt::format("[{} x {}] ", sendcount, datatypeToString(type));
+    auto recv_ty_str = fmt::format("[{} x {}] ", recvcount, datatypeToString(type));
+    str = fmt::format("task {}.{} {}{} > {}{} {}", id, collectiveName(coll), send_ty_str, sendbuf,
+                      sendcount != recvcount ? recv_ty_str : "", recvbuf, async ? "async" : "sync");
   }
 
   return str;
