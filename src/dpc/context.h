@@ -118,7 +118,7 @@ private:
 
   std::thread watchdog_thread;
   std::atomic<pid_t> watchdog_thread_id{0};
-  std::chrono::milliseconds timeout;
+  std::chrono::milliseconds timeout{0};
 
   // Task tracking
   std::atomic<uint64_t> submitted_{0};

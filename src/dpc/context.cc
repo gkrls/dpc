@@ -7,7 +7,6 @@
 #include <chrono>
 #include <cstdio>
 #include <memory>
-#include <ratio>
 #include <string_view>
 #include <thread>
 #include <unistd.h>
@@ -30,6 +29,7 @@ static uint64_t getUniqueID() {
 
 DPC_ENV_STR(kScheduler, "DPC_SCHEDULER", "off", "on", "fifo", "fifo-threaded");
 DPC_ENV_UINT(kTimeout, "DPC_TIMEOUT");
+const uint32_t kTimeoutDefault = 30000;
 
 } // namespace
 
@@ -57,8 +57,8 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend:
   this->backend_ = Backend::create(*this, kind);
   DPC_FATAL_IF(!this->backend_, "failed to create backend '{}'", Backend::getName(kind)); // options().name);
 
-  if (kScheduler.has_value()) this->scheduler_ = create_scheduler(*this, *kScheduler);
-  if (kTimeout.has_value()) this->timeout = std::chrono::milliseconds(*kTimeout);
+  this->scheduler_ = (kScheduler.has_value()) ? create_scheduler(*this, *kScheduler) : nullptr;
+  this->timeout = std::chrono::milliseconds(kTimeout.has_value() ? *kTimeout : kTimeoutDefault);
 
   // this->scheduler = std::make_unique<FIFOScheduler>(*this);
   // if (DPC_TIMEOUT) this->timeout = std::chrono::milliseconds(*DPC_TIMEOUT);
