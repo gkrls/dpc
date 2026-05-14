@@ -11,79 +11,112 @@
 
 namespace dpc::env {
 
-// Pure parsers — no side effects, safe to call anywhere
+namespace detail {
 
-inline std::optional<bool> getbool(const char *name) {
-  const char *e = std::getenv(name);
+// Iterate names in order, return env value of first one that's set (or nullptr).
+// `matched` gets set to the name that matched.
+inline const char *first_set(std::initializer_list<const char *> names, const char *&matched) {
+  for (const char *n : names) {
+    if (const char *e = std::getenv(n)) {
+      matched = n;
+      return e;
+    }
+  }
+  matched = nullptr;
+  return nullptr;
+}
+
+inline void log_ok(const char *name, const char *value) { printf("dpc: %s set by environment to %s\n", name, value); }
+
+inline void log_bad(const char *name, const char *value) {
+  printf("dpc: %s=%s not valid, ignoring environment\n", name, value);
+}
+
+inline bool iequals(std::string_view a, std::string_view b) {
+  return std::equal(a.begin(), a.end(), b.begin(), b.end(),
+                    [](char x, char y) { return std::tolower((unsigned char)x) == std::tolower((unsigned char)y); });
+}
+
+} // namespace detail
+
+inline std::optional<bool> getbool(std::initializer_list<const char *> names) {
+  const char *matched;
+  const char *e = detail::first_set(names, matched);
   if (!e) return std::nullopt;
+
   std::string_view v(e);
-  if (v == "1" || v == "ON" || v == "on") return true;
-  if (v == "0" || v == "OFF" || v == "off") return false;
+  if (v == "1" || detail::iequals(v, "on") || detail::iequals(v, "true")) {
+    detail::log_ok(matched, e);
+    return true;
+  }
+  if (v == "0" || detail::iequals(v, "off") || detail::iequals(v, "false")) {
+    detail::log_ok(matched, e);
+    return false;
+  }
+  detail::log_bad(matched, e);
   return std::nullopt;
 }
 
-inline std::optional<unsigned> getuint(const char *name, std::initializer_list<unsigned> allowed = {}) {
-  const char *e = std::getenv(name);
+inline std::optional<unsigned> getuint(std::initializer_list<const char *> names,
+                                       std::initializer_list<unsigned> allowed = {}) {
+  const char *matched;
+  const char *e = detail::first_set(names, matched);
   if (!e) return std::nullopt;
+
   char *end;
   long res = std::strtol(e, &end, 10);
-  if (end == e || res < 0) return std::nullopt;
-  if (allowed.size() && std::find(allowed.begin(), allowed.end(), static_cast<unsigned>(res)) == allowed.end())
+  if (end == e || res < 0) {
+    detail::log_bad(matched, e);
     return std::nullopt;
+  }
+  if (allowed.size() && std::find(allowed.begin(), allowed.end(), static_cast<unsigned>(res)) == allowed.end()) {
+    detail::log_bad(matched, e);
+    return std::nullopt;
+  }
+  detail::log_ok(matched, e);
   return static_cast<unsigned>(res);
 }
 
-inline std::optional<int> getint(const char *name, std::initializer_list<int> allowed = {}) {
-  const char *e = std::getenv(name);
+inline std::optional<int> getint(std::initializer_list<const char *> names, std::initializer_list<int> allowed = {}) {
+  const char *matched;
+  const char *e = detail::first_set(names, matched);
   if (!e) return std::nullopt;
+
   char *end;
   long res = std::strtol(e, &end, 10);
-  if (end == e) return std::nullopt;
-  if (allowed.size() && std::find(allowed.begin(), allowed.end(), static_cast<int>(res)) == allowed.end())
+  if (end == e) {
+    detail::log_bad(matched, e);
     return std::nullopt;
+  }
+  if (allowed.size() && std::find(allowed.begin(), allowed.end(), static_cast<int>(res)) == allowed.end()) {
+    detail::log_bad(matched, e);
+    return std::nullopt;
+  }
+  detail::log_ok(matched, e);
   return static_cast<int>(res);
 }
 
-inline std::optional<std::string_view> getstr(const char *name, std::initializer_list<std::string_view> allowed = {}) {
-  const char *e = std::getenv(name);
+inline std::optional<std::string_view> getstr(std::initializer_list<const char *> names,
+                                              std::initializer_list<std::string_view> allowed = {}) {
+  const char *matched;
+  const char *e = detail::first_set(names, matched);
   if (!e) return std::nullopt;
+
   std::string_view v(e);
-  if (!allowed.size()) return v;
-  auto iequals = [](std::string_view a, std::string_view b) {
-    return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](char c1, char c2) {
-      return std::tolower((unsigned char)c1) == std::tolower((unsigned char)c2);
-    });
-  };
-  for (auto a : allowed)
-    if (iequals(v, a)) return std::optional<std::string_view>{a};
-  return std::nullopt;
+  if (allowed.size()) {
+    for (auto a : allowed) {
+      if (detail::iequals(v, a)) {
+        detail::log_ok(matched, e);
+        return a;
+      }
+    }
+    detail::log_bad(matched, e);
+    return std::nullopt;
+  }
+  detail::log_ok(matched, e);
+  return v;
 }
-
-// Logging wrapper
-
-namespace detail {
-template <typename T> T env_with_log(const char *name, T result) {
-  const char *e = std::getenv(name);
-  if (!e) return result;
-  if (result) printf("dpc: %s set by environment to %s\n", name, e);
-  else printf("dpc: %s=%s not valid, ignoring environment\n", name, e);
-  return result;
-}
-} // namespace detail
 
 } // namespace dpc::env
-
-// =====================================================================
-// Public Macros — parse + log once at static init
-// =====================================================================
-
-#define DPC_ENV_BOOL(VAR, ENV)                                                                                         \
-  static const auto VAR = dpc::env::detail::env_with_log(ENV, dpc::env::detail::getbool(ENV))
-#define DPC_ENV_UINT(VAR, ENV, ...)                                                                                    \
-  static const auto VAR = dpc::env::detail::env_with_log(ENV, dpc::env::getuint(ENV, {__VA_ARGS__}))
-#define DPC_ENV_INT(VAR, ENV, ...)                                                                                     \
-  static const auto VAR = dpc::env::detail::env_with_log(ENV, dpc::env::getint(ENV, {__VA_ARGS__}))
-#define DPC_ENV_STR(VAR, ENV, ...)                                                                                     \
-  static const auto VAR = dpc::env::detail::env_with_log(ENV, dpc::env::getstr(ENV, {__VA_ARGS__}))
 
 #endif // !DPC_UTIL_ENV_H

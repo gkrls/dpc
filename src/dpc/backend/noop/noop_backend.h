@@ -18,6 +18,7 @@ public:
   NoopConfig(uint64_t op_ms, uint16_t threads) : BackendConfig(Backend::Noop), op_ms(op_ms), threads(threads) {}
   uint64_t op_ms = 500;
   uint16_t threads = 2;
+  static NoopConfig fromJson(const std::string & path);
 };
 
 class NoopBackend : public Backend {
@@ -25,6 +26,7 @@ class NoopBackend : public Backend {
   friend class Context;
 
 public:
+  using Config = NoopConfig;
   class Worker {
     friend class NoopBackend;
 
@@ -63,7 +65,6 @@ private:
   virtual bool push(std::shared_ptr<Task> task) override;
   virtual void print(bool details) const override;
 
-  virtual bool supports(Collective c) const override { return true; };
   virtual bool supports(Collective c, DataType t) const override { return true; };
   /**
    * @brief Check if this backend supports a collective

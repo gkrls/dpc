@@ -1,0 +1,11 @@
+CompileFlags:
+  CompilationDatabase: build/
+Diagnostics:
+  UnusedIncludes: Strict
+Index:
+  StandardLibrary: Yes
+  Background: Build
+Completion:
+  AllScopes: true
+  Placeholder: true
+

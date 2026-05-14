@@ -55,6 +55,7 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/config.h.in"  "${CMAKE_BINARY_DIR}/i
 
 # Sources
 set(DPC_SOURCES
+  backend/noop/noop_config.cc
   backend/noop/noop_backend.cc
   backend/backend.cc
   util/net_addr.cc
@@ -66,10 +67,16 @@ set(DPC_SOURCES
 )
 
 # include dpdk sources if needed
+set(DPC_DPDK_SOURCES
+  backend/dpdk/dpdk_backend.cc
+  backend/dpdk/dpdk_config.cc
+  backend/dpdk/dpdk_worker.cc
+)
 if(DPC_DPDK)
-  file(GLOB DPDK_SOURCES backend/dpdk/*.cc backend/dpdk/*.cpp)
-  list(APPEND DPC_SOURCES ${DPDK_SOURCES})
+  list(APPEND DPC_SOURCES ${DPC_DPDK_SOURCES})
 endif()
+
+message(STATUS ${DPC_SOURCES})
 
 add_library(dpc STATIC ${DPC_SOURCES})
 

@@ -1,3 +1,13 @@
+## Configuration precedence:
+
+| What                              | Source priority                  |
+| ----------------------------------|----------------------------------|
+| Backend selection                 | explicit > env > default         |
+| Device config                     | explicit > env > default         |
+| Field values within a config      | DPC_[BACKEND]_[FIELD] > JSON file > defaults |
+
+"Explicit" means a value passed to the Context constructor.
+
 ## Environment variables
 
 

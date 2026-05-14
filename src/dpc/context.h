@@ -26,15 +26,29 @@ public:
   // friend class Task;
 
   /// Default operation timeout (ms)
-  static const uint32_t kDefaultOperationTimeout = 30000;
+  inline static const uint32_t kDefaultOperationTimeout = 30000;
 
+  // Nothing specified — device & backend from env or defaults
+  Context(uint16_t rank, uint16_t world, uint32_t timeout = kDefaultOperationTimeout);
+  // Device given — backend from env or default
   Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, uint32_t timeout = kDefaultOperationTimeout);
-  Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, std::string be,
-          uint32_t timeout = kDefaultOperationTimeout);
-  Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend::Kind be,
-          uint32_t timeout = kDefaultOperationTimeout);
+  // Backend given — device from env/default
+  Context(uint16_t rank, uint16_t world, BackendConfig const &bc, uint32_t timeout = kDefaultOperationTimeout);
+  // Both given — no env
   Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc,
           uint32_t timeout = kDefaultOperationTimeout);
+
+  // /**
+  //  * @brief Create context with default backend and settings
+  //  */
+  // Context(uint16_t rank, uint16_t world, DeviceConfig const &dc = kDefaultDevice,
+  //         uint32_t timeout = kDefaultOperationTimeout);
+  // Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, std::string be = Backend::getName(kDefaultBackend),
+  //         uint32_t timeout = kDefaultOperationTimeout);
+  // Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend::Kind be,
+  //         uint32_t timeout = kDefaultOperationTimeout);
+  // Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc,
+  //         uint32_t timeout = kDefaultOperationTimeout);
   ~Context();
 
   State state() { return state_; }

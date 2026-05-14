@@ -8,6 +8,7 @@ endif()
 
 message(STATUS "Building DPC version: ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR} ${CMAKE_BUILD_TYPE}")
 
+# User facing options
 option(DPC_DEVELOP "Build DPC for development" OFF)
 option(DPC_HOST    "Build DPA host library" ON)
 option(DPC_SWITCH  "Build DPA device library" OFF)
@@ -20,6 +21,12 @@ option(DPC_ASAN    "Enable AddressSanitizer" OFF)
 option(DPC_DOCS    "Build documentation" OFF)
 option(DPC_TRACE   "Enable tracing in Debug builds" OFF)
 option(DPC_PROFILE "Enable tracing in Debug builds" OFF)
+
+# For internal consumption
+set(DPC_ASAN_ENABLED ${DPC_ASAN})
+set(DPC_DPDK_ENABLED ${DPC_DPDK})
+set(DPC_PROF_ENABLED ${DPC_PROFILE})
+set(DPC_TRACE_ENABLED ${DPC_TRACE})
 
 if(ENABLE_ASAN)
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer)

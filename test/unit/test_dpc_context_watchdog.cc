@@ -65,28 +65,23 @@ TEST_CASE("zero timeout disables watchdog") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("fires when task overruns timeout") {
-  // Child: op_ms=500, timeout=50ms. Submit a task and wait. Watchdog
-  // should kill the process via DPC_FATAL -> quick_exit(1) before wait returns.
   int rc = run_in_subprocess([] {
     auto ctx = MakeContext(/*op_ms=*/500, /*threads=*/2, /*timeout_ms=*/50);
     std::vector<uint32_t> data(64);
     auto task = ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
-    task->wait(); // should never return — watchdog kills us first
+    task->wait();
   });
-  CHECK(rc == 1); // DPC_FATAL exits with code 1
+  INFO("rc=" << rc);
+  CHECK(rc == 1);
 }
 
 TEST_CASE("fires during shutdown if backend hangs") {
-  // Child: submit a slow task, then drop the context immediately.
-  // backend.stop() will block on worker join (worker is sleeping in execute).
-  // Watchdog should fire and kill the process.
   int rc = run_in_subprocess([] {
     auto ctx = MakeContext(/*op_ms=*/500, /*threads=*/2, /*timeout_ms=*/50);
     std::vector<uint32_t> data(64);
     ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
-    // ctx goes out of scope -> ~Context -> stop() -> blocks on worker join
-    // -> watchdog fires
   });
+  INFO("rc=" << rc);
   CHECK(rc == 1);
 }
 

@@ -27,15 +27,15 @@ struct DeviceConfig {
   /// @brief Maximum number of slots available
   uint16_t slots = 32768;
   /// @brief Grpc
-  struct Controller {
+  struct ControllerConfig {
     std::string grpc_addr = "";
     uint16_t grpc_port = 50051;
     std::string thrift_addr = "";
     uint16_t thrift_port = 9090;
   } controller;
-  struct Session {
+  struct SessionConfig {
     uint32_t id = 1;
-    struct Pool {
+    struct PoolConfig {
       uint32_t base = 0;
       uint32_t size = 2;
     } pool;
@@ -47,14 +47,14 @@ struct DeviceConfig {
   inline uint32_t minValues() const { return this->valuesPerPipe(); }
   inline uint32_t maxValues() const { return this->pipes * this->valuesPerPipe(); }
   void print(bool detailed = false) const;
-
+public:
   static DeviceConfig fromJson(const std::string &path);
 
-  static const DeviceConfig DefaultTofinoD;
-  static const DeviceConfig DefaultTofinoQ;
+  static const DeviceConfig GenericTofino1;
+  static const DeviceConfig GenericTofino2;
 };
 
-inline const DeviceConfig DeviceConfig::DefaultTofinoD {
+inline const DeviceConfig DeviceConfig::GenericTofino1 {
   .name = "generic-tofino1",
   .mac = "42:00:00:00:00:00",
   .addr = "42.0.0.1",
@@ -75,7 +75,7 @@ inline const DeviceConfig DeviceConfig::DefaultTofinoD {
   },
 };
 
-inline const DeviceConfig DeviceConfig::DefaultTofinoQ {
+inline const DeviceConfig DeviceConfig::GenericTofino2 {
   .name = "generic-tofino2",
   .mac = "42:00:00:00:00:00",
   .addr = "42.0.0.1",
@@ -100,7 +100,7 @@ inline const DeviceConfig DeviceConfig::DefaultTofinoQ {
 class Device {
 public:
   Device(DeviceConfig const& o);
-  DeviceConfig const& conf;
+  DeviceConfig const conf;
   DeviceConfig const &config() { return conf; }
   void print(bool detail);
 };

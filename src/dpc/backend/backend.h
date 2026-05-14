@@ -1,9 +1,13 @@
 #ifndef DPC_BACKEND_H
 #define DPC_BACKEND_H
 
+#include "dpc/config.h"
 #include "dpc/task.h"
 #include <atomic>
+#include <memory>
 #include <string>
+#include <string_view>
+#include <utility>
 
 namespace dpc {
 
@@ -16,23 +20,29 @@ class BackendConfig;
 ///
 class Backend {
   friend class Context;
+  friend class BackendConfig;
 
 public:
   // ============= BACKEND REGISTRATION =============
   enum Kind {
     Noop,
+#if DPC_DPDK_ENABLED
     Dpdk,
+#endif
   };
 
 private:
   static inline constexpr std::pair<Backend::Kind, const char *> registry[] = {
       {Backend::Noop, "noop"},
+#if DPC_DPDK_ENABLED
       {Backend::Dpdk, "dpdk"},
+#endif
   };
   // ================================================
 
 public:
-  static std::string getName(Backend::Kind kind);
+  static std::string name(Backend::Kind kind);
+  static Backend::Kind kind(std::string_view name);
   static Backend::Kind get(std::string_view name);
 
   // static std::string getName(Kind kind) {
@@ -59,10 +69,6 @@ public:
    */
   virtual void print(bool details) const = 0;
   /**
-   * @brief Check if this backend supports a collective
-   */
-  virtual bool supports(Collective c) const = 0;
-  /**
    * @brief Check if this backend supports a collective on a give datatype
    */
   virtual bool supports(Collective c, DataType t) const = 0;
@@ -85,7 +91,7 @@ public:
   State state() const { return state_.load(); }
 
 protected:
-  Backend(Context &ctx, Backend::Kind kind) : ctx(ctx), kind_(kind), name_(getName(kind)) {}
+  Backend(Context &ctx, Backend::Kind kind) : ctx(ctx), kind_(kind), name_(name(kind)) {}
 
   /**
    * @brief Start the backend, creating all necessary resources
@@ -104,9 +110,7 @@ protected:
    */
   virtual bool push(std::shared_ptr<Task> task) = 0;
   /**
-   * Create a backend instance from BackendOptions
-   * If opts is a subclass of BackendOptions the apropriate backend is created and returned
-   * If not, nullptr is returned, signifying an error
+   * Create a backend instance
    */
   static std::unique_ptr<Backend> create(Context &ctx, BackendConfig const &conf);
   static std::unique_ptr<Backend> create(Context &ctx, Kind kind);
@@ -134,8 +138,17 @@ protected:
 public:
   virtual ~BackendConfig() = default;
   virtual BackendConfig &operator=(const BackendConfig &) = default;
-  virtual std::string str() const { return "unknown-backend-options-string"; }
-  virtual std::string getBackendName() const { return Backend::getName(kind_); };
+  // virtual std::string string() const { return "unknown-backend-config-string"; }
+  virtual std::string name() const { return Backend::name(kind_); };
+
+  /**
+   * @brief Create a backend config from the first one found in the json config. Throw if none
+   */
+  static std::unique_ptr<BackendConfig> fromJson(const std::string & path);
+  /**
+   * @brief Create a config for Backend @p kind from the json config @p path. Throw if not found
+   */
+  static std::unique_ptr<BackendConfig> fromJson(const std::string & path, Backend::Kind kind);
 
 public:
   // template <typename T> bool is() const { return dynamic_cast<const T *>(this) != nullptr; }

@@ -18,7 +18,7 @@ inline std::unique_ptr<Context> MakeContext(uint64_t op_ms = 0,
                                             uint16_t rank = 0,
                                             uint16_t world = 1) {
   NoopConfig cfg(op_ms, threads);
-  return std::make_unique<Context>(rank, world, DeviceConfig::DefaultTofinoD, cfg, timeout_ms);
+  return std::make_unique<Context>(rank, world, DeviceConfig::GenericTofino1, cfg, timeout_ms);
 }
 
 } // namespace dpc::test

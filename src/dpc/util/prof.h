@@ -16,10 +16,10 @@
 
 // #include <rte_cycles.h>
 
-#ifdef DPC_PROFILE
-#define DPC_PROFILE_DO(code) code;
+#ifdef DPC_PROF_ENABLED
+#define DPC_PROF_ENABLED_DO(code) code;
 #else
-#define DPC_PROFILE_DO(code) ;
+#define DPC_PROF_ENABLED_DO(code) ;
 #endif
 
 namespace dpc {
@@ -75,14 +75,14 @@ private:
 
 public:
   Prof(uint16_t tid, uint32_t skip = 0) : tid(tid), ops_skip(skip) {
-    if constexpr (DPC_PROFILE) printf("tid-%d profiler skipping %d ops", tid, skip);
+    if constexpr (DPC_PROF_ENABLED) printf("tid-%d profiler skipping %d ops", tid, skip);
   }
 
   void start(uint16_t opid) {
-    if constexpr (not DPC_PROFILE) return;
+    if constexpr (not DPC_PROF_ENABLED) return;
     if (done) return;
-    // #ifdef DPC_PROFILE_SKIP
-    //     if (ops_skipped < DPC_PROFILE_SKIP) {
+    // #ifdef DPC_PROF_ENABLED_SKIP
+    //     if (ops_skipped < DPC_PROF_ENABLED_SKIP) {
     //       ops_skipped++;
     //       return;
     //     }
@@ -101,30 +101,30 @@ public:
   }
 
   void stop() {
-    if constexpr (not DPC_PROFILE) return;
+    if constexpr (not DPC_PROF_ENABLED) return;
     done = true;
   }
   bool stopped() { return done; }
 
   void rec_drain(uint64_t tsc) {
-    if constexpr (not DPC_PROFILE) return;
+    if constexpr (not DPC_PROF_ENABLED) return;
     if (done || (time.drain_cnt >= time.drain.size())) return;
     time.drain[time.drain_cnt++] = tsc;
   }
   void rec_burst(uint64_t tsc) {
-    if constexpr (not DPC_PROFILE) return;
+    if constexpr (not DPC_PROF_ENABLED) return;
     if (done || (time.burst_cnt >= time.burst.size())) return;
     time.burst[time.burst_cnt++] = tsc;
   }
 
   void rec_iter(uint64_t tsc) {
-    if constexpr (not DPC_PROFILE) return;
+    if constexpr (not DPC_PROF_ENABLED) return;
     if (done || (time.iter_cnt >= time.iter.size())) return;
     time.iter[time.iter_cnt++] = tsc;
   }
 
   void rec_rtt(uint64_t rtt, uint8_t entry, bool straggle = false) {
-    if constexpr (not DPC_PROFILE) return;
+    if constexpr (not DPC_PROF_ENABLED) return;
     if (done) return;
 
     ++pkt.rx_res;
@@ -143,7 +143,7 @@ public:
   }
 
   void rec_rx() {
-    if constexpr (not DPC_PROFILE) return;
+    if constexpr (not DPC_PROF_ENABLED) return;
     if (done) return;
     ++pkt.rx_all;
   }

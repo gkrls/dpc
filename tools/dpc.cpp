@@ -7,7 +7,7 @@ int main(int argc, const char** argv) {
 
   dpc::NoopConfig cfg(1000, 2);
 
-  dpc::Context ctx(0, 10, dpc::DeviceConfig::DefaultTofinoD, cfg);
+  dpc::Context ctx(0, 10, dpc::DeviceConfig::GenericTofino1, cfg);
 
   std::vector<uint32_t> data(1024);
 

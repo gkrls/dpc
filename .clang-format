@@ -10,3 +10,12 @@ AllowShortCaseLabelsOnASingleLine: true
 # AllowShortCaseExpressionOnASingleLine: true
 AllowShortBlocksOnASingleLine: true
 ColumnLimit: 120
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  - Regex: '^<'        # system headers
+    Priority: 3
+  - Regex: '^"dpc/'    # your project headers
+    Priority: 1
+  - Regex: '^"'        # other quoted headers (siblings)
+    Priority: 2

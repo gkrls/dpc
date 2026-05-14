@@ -1,20 +1,26 @@
 #include "dpc/context.h"
+
+#include "dpc/backend/backend.h"
+#include "dpc/backend/noop/noop_backend.h"
+#if DPC_DPDK_ENABLED
+#include "dpc/backend/dpdk/dpdk_backend.h"
+#endif
 #include "dpc/config.h"
+#include "dpc/context_schedulers.h"
 #include "dpc/device.h"
 #include "dpc/task.h"
 #include "dpc/util/env.h"
 #include "dpc/util/error.h"
+#include "dpc/util/log.h"
+
+#include "fmt/core.h"
+
 #include <chrono>
 #include <cstdio>
 #include <memory>
 #include <string_view>
 #include <thread>
 #include <unistd.h>
-
-#include "dpc/backend/backend.h"
-#include "dpc/context_schedulers.h"
-#include "dpc/util/log.h"
-#include "fmt/core.h"
 
 using namespace dpc;
 
@@ -27,9 +33,41 @@ static uint64_t getUniqueID() {
   return count_.fetch_add(1);
 }
 
-DPC_ENV_STR(kScheduler, "DPC_SCHEDULER", "off", "on", "fifo", "fifo-threaded");
-DPC_ENV_UINT(kTimeout, "DPC_TIMEOUT");
-const uint32_t kTimeoutDefault = 30000;
+const auto kScheduler = env::getstr({"DPC_SCHEDULER"}, {"off", "on", "fifo", "fifo-threaded"}).value_or("off");
+const auto kTimeout = env::getuint({"DPC_TIMEOUT"});
+
+DeviceConfig resolveDevice() {
+  if (auto path = env::getstr({"DPC_DEVICE"})) return DeviceConfig::fromJson(std::string{*path});
+  return DeviceConfig::GenericTofino1;
+}
+
+// Resolve backend from env (config file + kind), falling back to default-constructed.
+std::unique_ptr<BackendConfig> resolveBackend() {
+  auto config_path = env::getstr({"DPC_CONFIG"});
+  auto backend_name = env::getstr({"DPC_BACKEND"});
+
+  if (config_path && backend_name) {
+    auto kind = Backend::get(std::string{*backend_name});
+    return BackendConfig::fromJson(std::string{*config_path}, kind);
+  }
+
+  if (config_path) {
+    // file given but no backend selector — use first one found
+    return BackendConfig::fromJson(std::string{*config_path});
+  }
+
+  if (backend_name) {
+    // kind given but no file — default-construct that kind
+    switch (Backend::get(std::string{*backend_name})) {
+    case Backend::Noop: return std::make_unique<NoopConfig>();
+    case Backend::Dpdk: return std::make_unique<DpdkConfig>();
+    }
+    DPC_ERROR("unhandled backend kind");
+  }
+
+  // neither given — default Noop with defaults
+  return std::make_unique<NoopConfig>();
+}
 
 } // namespace
 
@@ -43,30 +81,33 @@ std::unique_ptr<Context::Scheduler> create_scheduler(Context &ctx, const std::st
   return nullptr;
 }
 
+Context::Context(uint16_t rank, uint16_t world, uint32_t timeout)
+    : Context(rank, world, resolveDevice(), *resolveBackend(), timeout) {}
 Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, uint32_t timeout)
-    : Context(rank, world, dc, "noop", timeout) {}
-Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, std::string be, uint32_t timeout)
-    : Context(rank, world, dc, Backend::get(be), timeout) {}
+    : Context(rank, world, dc, *resolveBackend(), timeout) {}
 
-Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend::Kind kind, uint32_t timeout)
-    : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
-      state_(Context::Init), timeout(timeout) {
-  DPC_FATAL_IF(id > 0, "multiple contexts not supported yet");
+// Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, std::string be, uint32_t timeout)
+//     : Context(rank, world, dc, Backend::get(be), timeout) {}
 
-  this->device_ = std::make_unique<Device>(dc);
-  this->backend_ = Backend::create(*this, kind);
-  DPC_FATAL_IF(!this->backend_, "failed to create backend '{}'", Backend::getName(kind)); // options().name);
+// Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend::Kind kind, uint32_t timeout)
+//     : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
+//       state_(Context::Init), timeout(timeout) {
+//   DPC_FATAL_IF(id > 0, "multiple contexts not supported yet");
 
-  this->scheduler_ = (kScheduler.has_value()) ? create_scheduler(*this, *kScheduler) : nullptr;
-  this->timeout = std::chrono::milliseconds(kTimeout.has_value() ? *kTimeout : kTimeoutDefault);
+//   this->device_ = std::make_unique<Device>(dc);
+//   this->backend_ = Backend::create(*this, kind);
+//   DPC_FATAL_IF(!this->backend_, "failed to create backend '{}'", Backend::getName(kind)); // options().name);
 
-  // this->scheduler = std::make_unique<FIFOScheduler>(*this);
-  // if (DPC_TIMEOUT) this->timeout = std::chrono::milliseconds(*DPC_TIMEOUT);
+//   this->scheduler_ = kScheduler != "off" ? create_scheduler(*this, kScheduler) : nullptr;
+//   this->timeout = std::chrono::milliseconds(kTimeout.has_value() ? *kTimeout : Context::kDefaultOperationTimeout);
 
-  // PrintContextInfo(*this);
-  print();
-  start();
-}
+//   // this->scheduler = std::make_unique<FIFOScheduler>(*this);
+//   // if (DPC_TIMEOUT) this->timeout = std::chrono::milliseconds(*DPC_TIMEOUT);
+
+//   // PrintContextInfo(*this);
+//   print();
+//   start();
+// }
 
 Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc, uint32_t timeout)
     : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
@@ -75,10 +116,12 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendC
 
   this->device_ = std::make_unique<Device>(dc);
   this->backend_ = Backend::create(*this, bc);
-  DPC_FATAL_IF(!this->backend_, "failed to create backend '{}'", bc.getBackendName()); // options().name);
+  this->scheduler_ = kScheduler != "off" ? create_scheduler(*this, kScheduler) : nullptr;
+  this->timeout = std::chrono::milliseconds(kTimeout.value_or(timeout));
 
-  if (kScheduler.has_value()) this->scheduler_ = create_scheduler(*this, *kScheduler);
-  if (kTimeout.has_value()) this->timeout = std::chrono::milliseconds(*kTimeout);
+  DPC_FATAL_IF(!this->backend_, "failed to create backend '{}'", bc.name()); // options().name);
+  // if (kScheduler.has_value()) this->scheduler_ = create_scheduler(*this, *kScheduler);
+  // if (kTimeout.has_value()) this->timeout = std::chrono::milliseconds(*kTimeout);
   // PrintContextInfo(*this);
   print();
   start();
