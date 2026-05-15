@@ -11,6 +11,10 @@ add_executable(test_dpc_api_validation test_dpc_api_validation.cc)
 target_link_libraries(test_dpc_api_validation PRIVATE doctest::doctest dpc)
 doctest_discover_tests(test_dpc_api_validation TEST_PREFIX "api/validation::")
 
+add_executable(test_dpc_backend_worker test_dpc_backend_worker.cc)
+target_link_libraries(test_dpc_backend_worker PRIVATE doctest::doctest dpc)
+doctest_discover_tests(test_dpc_backend_worker TEST_PREFIX "backend/worker::")
+
 add_executable(test_dpc_config_parsing test_dpc_config_parsing.cc)
 target_link_libraries(test_dpc_config_parsing PRIVATE doctest::doctest dpc)
 doctest_discover_tests(test_dpc_config_parsing TEST_PREFIX "config::")

@@ -32,7 +32,7 @@ struct DeviceConfig {
     uint16_t grpc_port = 50051;
     std::string thrift_addr = "";
     uint16_t thrift_port = 9090;
-  } controller;
+  } controller {};
   struct SessionConfig {
     uint32_t id = 1;
     struct PoolConfig {
@@ -41,7 +41,7 @@ struct DeviceConfig {
     } pool;
     float dropsimIngress = 0; // %
     float dropsimEgress = 0;  // %
-  } session;
+  } session {};
 
   inline uint32_t valuesPerPipe() const { return this->reducers * this->reducer_mode; }
   inline uint32_t minValues() const { return this->valuesPerPipe(); }

@@ -1,6 +1,5 @@
-// test/unit/test_dpc_context_lifecycle.cc
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
+#include "doctest/doctest.h"
 
 #include "test_helper.h"
 

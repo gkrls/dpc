@@ -120,7 +120,7 @@ private:
 private:
   bool use_scheduler_ = false;
   std::string name_;
-  std::atomic<Context::State> state_;
+  std::atomic<Context::State> state_{Context::Init};
   std::condition_variable state_cv;
   std::once_flag init_flag;
   std::once_flag fini_flag;
@@ -147,11 +147,4 @@ private:
 // scheduler stuff
 
 } // namespace dpc
-
-// #define DPC_FATAL(fstr, ...)                                                                                           \
-//   do {                                                                                                                 \
-//     fmt::println(stderr, "FATAL {}:{}: " fstr, __FILE_NAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__);                    \
-//     std::abort();                                                                                                      \
-//   } while (0)
-
 #endif

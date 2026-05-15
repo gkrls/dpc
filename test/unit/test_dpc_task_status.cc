@@ -1,6 +1,5 @@
-// test/unit/test_dpc_task_status.cc
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
+#include "doctest/doctest.h"
 
 #include "test_helper.h"
 
@@ -70,7 +69,7 @@ TEST_CASE("wait: returns even if task does not finish in time") {
   auto task = ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
 
   auto t0 = std::chrono::steady_clock::now();
-  auto status = task->wait(50ms);
+  task->wait(50ms);
   auto elapsed = std::chrono::steady_clock::now() - t0;
 
   CHECK(elapsed < 300ms);

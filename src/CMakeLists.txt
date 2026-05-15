@@ -55,12 +55,6 @@ if(DPC_HOST)
     message(STATUS "SIMD: none available")
   endif()
 
-  # C++ standard
-  set(CMAKE_CXX_STANDARD 17)
-  set(CMAKE_CXX_STANDARD_REQUIRED ON)
-  set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-
   if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "Debug build: keeping default optimization")
   else()
@@ -70,9 +64,9 @@ if(DPC_HOST)
 
   add_subdirectory(dpc)
 
-  # if(DPC_TORCH)
-  # add_subdirectory(dpc_torch_plugin)
-  # endif()
+  if(DPC_TORCH)
+    add_subdirectory(dpc_torch)
+  endif()
 endif()
 
 if(DPC_SWITCH)

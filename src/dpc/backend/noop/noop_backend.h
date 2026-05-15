@@ -2,9 +2,10 @@
 #define DPC_BACKEND_NULL
 
 #include "dpc/backend/backend.h"
+#include "dpc/backend/worker.h"
 #include "dpc/context.h"
-#include "dpc/util/queue.h"
-#include <condition_variable>
+#include "dpc/util/log.h"
+
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -18,7 +19,7 @@ public:
   NoopConfig(uint64_t op_ms, uint16_t threads) : BackendConfig(Backend::Noop), op_ms(op_ms), threads(threads) {}
   uint64_t op_ms = 500;
   uint16_t threads = 2;
-  static NoopConfig fromJson(const std::string & path);
+  static NoopConfig fromJson(const std::string &path);
 };
 
 class NoopBackend : public Backend {
@@ -26,30 +27,53 @@ class NoopBackend : public Backend {
   friend class Context;
 
 public:
-  using Config = NoopConfig;
-  class Worker {
-    friend class NoopBackend;
+  class Worker : public dpc::Worker {
+  public:
+    Worker(uint16_t tid, NoopBackend &backend) : dpc::Worker(tid), backend_(backend) {}
 
   protected:
-    Worker(uint16_t tid, NoopBackend &backend);
-    void start();
-    void stop();
-    void push(std::shared_ptr<Task> task);
-    void join();
+    Task::Status execute(std::shared_ptr<Task> task) override {
+      DPC_TRACE("{}-t{}: Running task {}", backend_.name(), tid(), task->name);
+      std::this_thread::sleep_for(std::chrono::milliseconds(backend_.conf.op_ms));
+      return Task::Completed;
+    }
+
+    void on_task_start(std::shared_ptr<Task> task) override { backend_.notify(tid(), task, Task::Running); }
+    void on_task_finish(std::shared_ptr<Task> task, Task::Status status) override {
+      backend_.notify(tid(), task, status);
+    }
+    void on_task_abort(std::shared_ptr<Task> task) override { backend_.notify(tid(), task, Task::Aborted); }
 
   private:
-    void loop();
-    Task::Status execute(std::shared_ptr<Task> task);
-    NoopBackend &backend;
-    uint16_t tid = 0;
-    std::atomic<bool> running{false};
-    std::mutex wait_mutex;
-    std::condition_variable cv;
-    std::once_flag start_flag;
-    std::once_flag stop_flag;
-    MPSCQueue<std::shared_ptr<Task>> queue;
-    std::thread thread;
+    NoopBackend &backend_;
   };
+
+public:
+  using Config = NoopConfig;
+  // class Worker {
+  //   friend class NoopBackend;
+
+  // protected:
+  //   Worker(uint16_t tid, NoopBackend &backend);
+  //   void push(std::shared_ptr<Task> task);
+  //   void start();
+  //   void stop();
+  //   void join();
+
+  // private:
+  //   void notify();
+  //   void loop();
+  //   Task::Status execute(std::shared_ptr<Task> task);
+  //   NoopBackend &backend;
+  //   uint16_t tid = 0;
+  //   std::atomic<bool> running{false};
+  //   std::mutex wait_mutex;
+  //   std::condition_variable cv;
+  //   std::once_flag start_flag;
+  //   std::once_flag stop_flag;
+  //   MPSCQueue<std::shared_ptr<Task>> queue;
+  //   std::thread thread;
+  // };
 
   ~NoopBackend() noexcept override {
     try {
@@ -62,10 +86,10 @@ private:
 
   virtual void start() override;
   virtual void stop() override;
-  virtual bool push(std::shared_ptr<Task> task) override;
+  virtual void push(std::shared_ptr<Task> task) override;
   virtual void print(bool details) const override;
 
-  virtual bool supports(Collective c, DataType t) const override { return true; };
+  virtual bool supports(Collective, DataType) const override { return true; };
   /**
    * @brief Check if this backend supports a collective
    */

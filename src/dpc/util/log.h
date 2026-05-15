@@ -22,16 +22,10 @@ inline const LogLevel level = [] {
 } // namespace detail
 } // namespace dpc::log
 
-// #define DPC_LOG(lvl, tag, fstr, ...)                                                                                   \
-//   do {                                                                                                                 \
-//     if (lvl >= log::detail::level)                                                                                     \
-//       fmt::println(stderr, "{} {}:{}: " fstr, tag, __FILE_NAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__);                \
-//   } while (0)
-
 #define DPC_LOG(lvl, tag, fstr, ...)                                                                                   \
   do {                                                                                                                 \
-    if (lvl >= dpc::log::detail::level) {                                                                                   \
-      if (lvl <= dpc::log::LogLevel::Debug)                                                                                 \
+    if (lvl >= dpc::log::detail::level) {                                                                              \
+      if (lvl <= dpc::log::LogLevel::Debug)                                                                            \
         fmt::println(stderr, "{} {}:{}: " fstr, tag, __FILE_NAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__);              \
       else fmt::println(stderr, "{} " fstr, tag __VA_OPT__(, ) __VA_ARGS__);                                           \
     }                                                                                                                  \
@@ -46,7 +40,5 @@ inline const LogLevel level = [] {
 #define DPC_DEBUG(fstr, ...) DPC_LOG(dpc::log::LogLevel::Debug, "dpc.debug:", fstr __VA_OPT__(, ) __VA_ARGS__)
 #define DPC_INFO(fstr, ...) DPC_LOG(dpc::log::LogLevel::Info, "dpc:", fstr __VA_OPT__(, ) __VA_ARGS__)
 #define DPC_WARN(fstr, ...) DPC_LOG(dpc::log::LogLevel::Warn, "dpc.warn:", fstr __VA_OPT__(, ) __VA_ARGS__)
-
-
 
 #endif // !DPC_UTIL_LOG_H

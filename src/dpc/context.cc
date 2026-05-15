@@ -109,17 +109,20 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, uint32_t
 //   start();
 // }
 
+static std::atomic<int> live_contexts{0};
+
+
 Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc, uint32_t timeout)
     : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
       state_(Context::Init), timeout(timeout) {
-  DPC_FATAL_IF(id > 0, "multiple contexts not supported yet");
+  DPC_FATAL_IF(live_contexts.fetch_add(1) > 0, "multiple contexts not supported yet");
 
   this->device_ = std::make_unique<Device>(dc);
   this->backend_ = Backend::create(*this, bc);
   this->scheduler_ = kScheduler != "off" ? create_scheduler(*this, kScheduler) : nullptr;
   this->timeout = std::chrono::milliseconds(kTimeout.value_or(timeout));
 
-  DPC_FATAL_IF(!this->backend_, "failed to create backend '{}'", bc.name()); // options().name);
+  DPC_ERROR_IF(!this->backend_, "failed to create backend '{}'", bc.name()); // options().name);
   // if (kScheduler.has_value()) this->scheduler_ = create_scheduler(*this, *kScheduler);
   // if (kTimeout.has_value()) this->timeout = std::chrono::milliseconds(*kTimeout);
   // PrintContextInfo(*this);
@@ -127,7 +130,7 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendC
   start();
 }
 
-Context::~Context() { stop(); }
+Context::~Context() { stop(); live_contexts.fetch_sub(1); }
 
 void Context::print() {
   DPC_INFO("{}", std::string(100, '='));
@@ -144,12 +147,11 @@ void Context::print() {
 void Context::start() {
   std::call_once(init_flag, [this] {
     DPC_DEBUG("{} starting backend {}", name_, backend_->name());
-    // DPC_DEBUG("starting backend '{}' for context {}", backend().name(), name_);
+
     backend().start();
 
     if (scheduler_) {
       DPC_DEBUG("{} starting scheduler {}", name_, scheduler_->name());
-      // DPC_DEBUG("starting scheduler '{}' for context {}", scheduler->name(), name_);
       scheduler_->start();
     }
 
@@ -235,8 +237,7 @@ std::shared_ptr<Task> Context::submit(std::shared_ptr<Task> task) {
   {
     std::lock_guard<std::mutex> lock(tracking_mutex);
     auto [it, inserted] = tracking_tasks.try_emplace(task->id, task);
-    // DPC_DEBUG("submitted: tracking_tasks now has {} entries", tracking_tasks.size());
-    DPC_FATAL_IF(!inserted, "duplicate task id {}", task->id);
+    DPC_CHECK(inserted, "duplicate task id {}", task->id);
     submitted_.fetch_add(1);
   }
 
@@ -249,13 +250,13 @@ std::shared_ptr<Task> Context::submit(std::shared_ptr<Task> task) {
 }
 
 void Context::execute(std::shared_ptr<Task> task) {
-  DPC_ERROR_IF(&task->ctx != this, "task {} not created by this context", task->name);
-  DPC_ERROR_IF(task->getStatus() > Task::Created, "task {} with status '{}'", task->name, task->getStatusString());
-  DPC_ERROR_IF(!backend_->push(task), "failed to push task {} to backend");
+  DPC_CHECK(&task->ctx == this, "task {} not created by this context", task->name);
+  DPC_CHECK(task->getStatus() == Task::Created, "task {} with status '{}'", task->name, task->getStatusString());
+  backend_->push(task);
 }
 
 void Context::watchdog() {
-  DPC_ERROR_IF(timeout == std::chrono::milliseconds::zero(), "watchdog should not run with timeout 0");
+  DPC_CHECK(timeout > std::chrono::milliseconds::zero(), "watchdog should not run with timeout 0");
 
   watchdog_thread_id.store(gettid(), std::memory_order_release);
 
@@ -311,12 +312,12 @@ void Context::watchdog() {
 
 std::shared_ptr<Task> Context::ReduceAsync(void const *sendbuf, void *recvbuf, uint64_t count, uint32_t root,
                                            DataType type, ReduceOp op, CollectiveOptions const &opt) {
-  DPC_FATAL("Reduce collective not implemented");
+  DPC_ERROR("Reduce collective not implemented");
 }
 
 Task::Status Context::Reduce(void const *sendbuf, void *recvbuf, uint64_t count, uint32_t root, DataType type,
                              ReduceOp op, CollectiveOptions const &opt) {
-  DPC_FATAL("Reduce collective not implemented");
+  DPC_ERROR("Reduce collective not implemented");
 }
 
 std::shared_ptr<Task> Context::ReduceScatterAsync(void const *sendbuf, void *recvbuf, uint64_t recvcount, DataType type,

@@ -1,0 +1,2 @@
+add_executable(bench_worker bench_worker_queue.cc)
+target_link_libraries(bench_worker PRIVATE dpc)

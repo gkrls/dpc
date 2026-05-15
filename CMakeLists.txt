@@ -17,21 +17,72 @@ option(DPC_TORCH   "Build the DPA Pytorch plugin" ON)
 option(DPC_AVX2    "Enable AVX2 if available" ON)
 option(DPC_AVX512  "Enable AVX512 if available" ON)
 option(DPC_TEST    "Build tests" OFF)
-option(DPC_ASAN    "Enable AddressSanitizer" OFF)
+option(DPC_ASAN    "Build with AddressSanitizer" OFF)
+option(DPC_TSAN    "Build with ThreadSanitizer" OFF)
 option(DPC_DOCS    "Build documentation" OFF)
 option(DPC_TRACE   "Enable tracing in Debug builds" OFF)
 option(DPC_PROFILE "Enable tracing in Debug builds" OFF)
 
+# add_compile_options(
+#   -Wall -Wextra -Wpedantic
+#   -Wshadow=local        # shadowed variables
+#   -Wnon-virtual-dtor    # base classes need virtual destructors
+#   -Wold-style-cast      # C-style casts in C++
+#   -Wcast-align          # alignment violations
+#   -Wunused              # unused vars/params
+#   -Woverloaded-virtual  # accidentally hiding virtual functions
+#   -Wconversion          # implicit narrowing conversions
+#   -Wsign-conversion     # signed/unsigned conversions
+#   -Wnull-dereference    # null deref detection
+#   -Wdouble-promotion    # accidental float -> double
+#   -Wformat=2            # printf-style format checks
+# )
+
+set(CMAKE_CXX_STANDARD 17) # can do 20
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+
+
+add_compile_options(
+  -Wall
+  -Wextra
+  -Wpedantic
+  -Wno-c++20-extensions # basically just for designated initializers in C++17
+  -Wnon-virtual-dtor    # base classes need virtual destructors
+  -Wcast-align          # alignment violations
+  -Wno-variadic-macros
+  -Wshadow=local
+  -Woverloaded-virtual
+  -Wnull-dereference
+  -Wdouble-promotion
+  -Wformat=2
+  -Wno-unused-parameter
+)
+
+if(DPC_WERROR)
+  add_compile_options(-Werror)
+endif()
+
+if(DPC_ASAN AND DPC_TSAN)
+  message(FATAL_ERROR "DPC_ASAN and DPC_TSAN are mutually exclusive; pick one")
+endif()
+
+if(DPC_ASAN)
+  add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer -O1)
+  add_link_options(-fsanitize=address,undefined)
+endif()
+
+if(DPC_TSAN)
+  add_compile_options(-fsanitize=thread -O1)
+  add_link_options(-fsanitize=thread -no-pie)
+endif()
+
 # For internal consumption
-set(DPC_ASAN_ENABLED ${DPC_ASAN})
 set(DPC_DPDK_ENABLED ${DPC_DPDK})
 set(DPC_PROF_ENABLED ${DPC_PROFILE})
 set(DPC_TRACE_ENABLED ${DPC_TRACE})
-
-if(ENABLE_ASAN)
-    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
-    add_link_options(-fsanitize=address)
-endif()
 
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -40,13 +91,12 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/install" CACHE PATH "" FORCE)
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+add_subdirectory(src)
+add_subdirectory(tools)
 
 if (DPC_TEST)
   enable_testing()
+  add_subdirectory(test)
 endif()
 
-add_subdirectory(src)
-add_subdirectory(test)
-add_subdirectory(tools)

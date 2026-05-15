@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <vector>
 
+namespace dpc::test { struct TaskFactory; }
 
 namespace dpc {
 
@@ -31,11 +32,16 @@ struct CollectiveOptions {
   std::function<void(Task&)> on_error = nullptr;
 };
 
-constexpr uint8_t dtypeWidth(DataType) noexcept { return 4; }
+constexpr uint8_t datatypeWidth(DataType) noexcept { return 4; }
+std::string datatypeToString(DataType dtype);
+std::string collectiveName(Collective coll);
+std::string reduceOpName(ReduceOp reduce);
 
 
 class Task {
 public:
+  friend struct ::dpc::test::TaskFactory;
+
   using id_t = uint64_t;
 
   enum Status : int8_t {

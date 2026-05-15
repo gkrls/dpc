@@ -1,8 +1,7 @@
-// test/unit/test_config_parsing.cc
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "dpc/backend/noop/noop_backend.h"
 
-#include <doctest/doctest.h>
+#include "doctest/doctest.h"
 #include <filesystem>
 #include <fstream>
 #include <random>

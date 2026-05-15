@@ -79,7 +79,7 @@ public:
   /**
    * @brief Fetch the context of this Backend
    */
-  virtual Context &context() const { return ctx; }
+  virtual Context &context() const { return ctx_; }
 
   /**
    * @brief Check if a backend is a certain kind
@@ -91,7 +91,7 @@ public:
   State state() const { return state_.load(); }
 
 protected:
-  Backend(Context &ctx, Backend::Kind kind) : ctx(ctx), kind_(kind), name_(name(kind)) {}
+  Backend(Context &ctx, Backend::Kind kind) : ctx_(ctx), kind_(kind), name_(name(kind)) {}
 
   /**
    * @brief Start the backend, creating all necessary resources
@@ -108,18 +108,18 @@ protected:
    * This is a non-blocking call that should return immediatelly
    * Task status is handled by the Task object itself
    */
-  virtual bool push(std::shared_ptr<Task> task) = 0;
+  virtual void push(std::shared_ptr<Task> task) = 0;
   /**
    * Create a backend instance
    */
   static std::unique_ptr<Backend> create(Context &ctx, BackendConfig const &conf);
   static std::unique_ptr<Backend> create(Context &ctx, Kind kind);
 
-  Context &ctx;
-
-  const std::string name_;
+  Context &ctx_;
 
   const Backend::Kind kind_;
+
+  const std::string name_;
 
   std::atomic<State> state_{State::Init};
 };
@@ -129,15 +129,15 @@ class BackendConfig {
   friend class Context;
   friend class Backend;
 
-protected:
+public:
   BackendConfig() = delete;
   BackendConfig(Backend::Kind kind) : kind_(kind) {} // name(name) {}
   BackendConfig(BackendConfig &&) = default;
   BackendConfig(BackendConfig const &) = default;
+  BackendConfig &operator=(const BackendConfig &) = default;
 
-public:
   virtual ~BackendConfig() = default;
-  virtual BackendConfig &operator=(const BackendConfig &) = default;
+
   // virtual std::string string() const { return "unknown-backend-config-string"; }
   virtual std::string name() const { return Backend::name(kind_); };
 

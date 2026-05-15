@@ -3,7 +3,7 @@
 #include "dpc/device.h"
 #include "dpc/task.h"
 
-int main(int argc, const char** argv) {
+int main(int, char**) {
 
   dpc::NoopConfig cfg(1000, 2);
 

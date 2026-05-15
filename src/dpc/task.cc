@@ -16,7 +16,7 @@ static uint64_t nextTaskID() {
   return count_.fetch_add(1);
 }
 
-static std::string collectiveName(Collective coll) {
+std::string dpc::collectiveName(Collective coll) {
   switch (coll) {
   case Collective::AllReduce: return "allreduce";
   case Collective::AllGather: return "allgather";
@@ -25,7 +25,7 @@ static std::string collectiveName(Collective coll) {
   }
 }
 
-static std::string reduceOpName(ReduceOp reduce) {
+std::string dpc::reduceOpName(ReduceOp reduce) {
   switch (reduce) {
   case ReduceOp::Sum: return "sum";
   case ReduceOp::Min: return "min";
@@ -36,7 +36,7 @@ static std::string reduceOpName(ReduceOp reduce) {
   }
 }
 
-static std::string datatypeToString(DataType dtype) {
+std::string dpc::datatypeToString(DataType dtype) {
   switch (dtype) {
   case DataType::I32: return "i32";
   case DataType::U32: return "u32";
@@ -254,7 +254,7 @@ std::unordered_map<std::string, float> Task::getStats() {
 
   float time_s = time_ms > 0.0f ? time_ms / 1000.0f : 1e-9f;
   float elements = static_cast<float>(sendcount);
-  float bytes = static_cast<float>(sendcount * dtypeWidth(type));
+  float bytes = static_cast<float>(sendcount * datatypeWidth(type));
 
   out["time_ms"] = time_ms;
   // out["threads"] = static_cast<float>(stats.perf.threads.load());

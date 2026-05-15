@@ -135,7 +135,7 @@ private:
 
 public:
   DpdkConfig() : BackendConfig(Backend::Dpdk) {}
-  uint32_t requiredSlots() const { return window * threads * 2; }
+  uint32_t requiredSlots() const { return window * threads * 2u; }
   uint32_t maxOutstandingPackets() const { return threads * window; }
 
   static DpdkConfig fromJson(const std::string &path);
@@ -156,7 +156,7 @@ public:
   virtual bool supports(Collective c, DataType t) const override;
 
 protected:
-  virtual bool push(std::shared_ptr<Task> task) override;
+  virtual void push(std::shared_ptr<Task> task) override;
   virtual void start() override;
   virtual void stop() override;
 private:
