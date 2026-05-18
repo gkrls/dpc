@@ -2,7 +2,7 @@
 #define DPC_BACKEND_NULL
 
 #include "dpc/backend/backend.h"
-#include "dpc/backend/worker.h"
+// #include "dpc/backend/worker.h"
 #include "dpc/context.h"
 #include "dpc/util/log.h"
 
@@ -12,6 +12,9 @@
 #include <unordered_map>
 
 namespace dpc {
+
+class NoopBackend;
+class NoopWorker;
 
 class NoopConfig : public BackendConfig {
 public:
@@ -23,57 +26,12 @@ public:
 };
 
 class NoopBackend : public Backend {
-  friend class Backend;
   friend class Context;
-
-public:
-  class Worker : public dpc::Worker {
-  public:
-    Worker(uint16_t tid, NoopBackend &backend) : dpc::Worker(tid), backend_(backend) {}
-
-  protected:
-    Task::Status execute(std::shared_ptr<Task> task) override {
-      DPC_TRACE("{}-t{}: Running task {}", backend_.name(), tid(), task->name);
-      std::this_thread::sleep_for(std::chrono::milliseconds(backend_.conf.op_ms));
-      return Task::Completed;
-    }
-
-    void on_task_start(std::shared_ptr<Task> task) override { backend_.notify(tid(), task, Task::Running); }
-    void on_task_finish(std::shared_ptr<Task> task, Task::Status status) override {
-      backend_.notify(tid(), task, status);
-    }
-    void on_task_abort(std::shared_ptr<Task> task) override { backend_.notify(tid(), task, Task::Aborted); }
-
-  private:
-    NoopBackend &backend_;
-  };
+  friend class Backend;
+  friend class NoopWorker;
 
 public:
   using Config = NoopConfig;
-  // class Worker {
-  //   friend class NoopBackend;
-
-  // protected:
-  //   Worker(uint16_t tid, NoopBackend &backend);
-  //   void push(std::shared_ptr<Task> task);
-  //   void start();
-  //   void stop();
-  //   void join();
-
-  // private:
-  //   void notify();
-  //   void loop();
-  //   Task::Status execute(std::shared_ptr<Task> task);
-  //   NoopBackend &backend;
-  //   uint16_t tid = 0;
-  //   std::atomic<bool> running{false};
-  //   std::mutex wait_mutex;
-  //   std::condition_variable cv;
-  //   std::once_flag start_flag;
-  //   std::once_flag stop_flag;
-  //   MPSCQueue<std::shared_ptr<Task>> queue;
-  //   std::thread thread;
-  // };
 
   ~NoopBackend() noexcept override {
     try {
@@ -98,20 +56,40 @@ private:
   // Called by workers to notify when start/finish a task
   void notify(uint16_t tid, std::shared_ptr<Task> task, Task::Status res);
 
-private:
   void worker_loop();
 
   struct TaskState {
     uint16_t remaining = 1;
     Task::Status worst = Task::Completed;
   };
+
   // std::atomic<State> state{Backend::Init};
   NoopConfig conf;
   std::once_flag start_flag;
   std::once_flag stop_flag;
   std::mutex tasks_mutex;
   std::unordered_map<Task::id_t, TaskState> tasks;
-  std::vector<std::unique_ptr<Worker>> workers;
+  std::vector<std::unique_ptr<NoopWorker>> workers;
+};
+
+class NoopWorker : public BackendWorker {
+public:
+  // friend class NoopBackend;
+  NoopWorker(uint16_t tid, NoopBackend &backend) : BackendWorker(tid), backend_(backend) {}
+
+protected:
+  Task::Status execute(std::shared_ptr<Task> task) override {
+    DPC_TRACE("{}-t{}: Running task {}", backend_.name(), id(), task->name);
+    std::this_thread::sleep_for(std::chrono::milliseconds(backend_.conf.op_ms));
+    return Task::Completed;
+  }
+
+  void on_task_start(std::shared_ptr<Task> task) override { backend_.notify(id(), task, Task::Running); }
+  void on_task_finish(std::shared_ptr<Task> task, Task::Status status) override { backend_.notify(id(), task, status); }
+  void on_task_abort(std::shared_ptr<Task> task) override { backend_.notify(id(), task, Task::Aborted); }
+
+private:
+  NoopBackend &backend_;
 };
 
 } // namespace dpc

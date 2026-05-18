@@ -122,7 +122,7 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendC
   this->scheduler_ = kScheduler != "off" ? create_scheduler(*this, kScheduler) : nullptr;
   this->timeout = std::chrono::milliseconds(kTimeout.value_or(timeout));
 
-  DPC_ERROR_IF(!this->backend_, "failed to create backend '{}'", bc.name()); // options().name);
+  DPC_ERROR_IF(!this->backend_, "failed to create backend '{}'", Backend::name(bc.kind_)); // options().name);
   // if (kScheduler.has_value()) this->scheduler_ = create_scheduler(*this, *kScheduler);
   // if (kTimeout.has_value()) this->timeout = std::chrono::milliseconds(*kTimeout);
   // PrintContextInfo(*this);

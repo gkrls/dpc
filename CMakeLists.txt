@@ -44,7 +44,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 
-
 add_compile_options(
   -Wall
   -Wextra
@@ -77,6 +76,31 @@ endif()
 if(DPC_TSAN)
   add_compile_options(-fsanitize=thread -O1)
   add_link_options(-fsanitize=thread -no-pie)
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(_probe "${CMAKE_BINARY_DIR}/tsan_probe.c")
+    file(WRITE "${_probe}" "int main(void){return 0;}\n")
+
+    try_run(_tsan_run_result _tsan_compile_result
+      "${CMAKE_BINARY_DIR}/tsan_probe_build"
+      "${_probe}"
+      COMPILE_DEFINITIONS -fsanitize=thread
+      LINK_OPTIONS -fsanitize=thread
+      RUN_OUTPUT_VARIABLE _tsan_output
+    )
+
+    if(_tsan_compile_result AND NOT _tsan_run_result EQUAL 0)
+      message(FATAL_ERROR
+        "\n"
+        "ThreadSanitizer probe failed at runtime:\n"
+        "${_tsan_output}\n"
+        "\n"
+        "If you see 'unexpected memory mapping', run:\n"
+        "  sudo sysctl vm.mmap_rnd_bits=28\n"
+        "and re-run cmake. (Resets on reboot.)\n"
+      )
+    endif()
+  endif()
 endif()
 
 # For internal consumption

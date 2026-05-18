@@ -3,21 +3,27 @@
 
 #include "dpc/config.h"
 #include "dpc/task.h"
+#include "dpc/util/error.h"
+#include "dpc/util/queue.h"
+
 #include <atomic>
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 namespace dpc {
 
 class Context;
 class BackendConfig;
+class BackendWorker;
 
-///
-/// Base abstract class for all backend implementations
-/// Only the Context is meant to create and access it
-///
+/**
+ * @brief Base abstract class for all backends
+ *
+ * Only the context is meant to use it
+ */
 class Backend {
   friend class Context;
   friend class BackendConfig;
@@ -25,7 +31,7 @@ class Backend {
 public:
   // ============= BACKEND REGISTRATION =============
   enum Kind {
-    Noop,
+    Noop = 0,
 #if DPC_DPDK_ENABLED
     Dpdk,
 #endif
@@ -45,14 +51,6 @@ public:
   static Backend::Kind kind(std::string_view name);
   static Backend::Kind get(std::string_view name);
 
-  // static std::string getName(Kind kind) {
-  //   static const std::unordered_map<Kind, std::string> names = {{Null, "null"}, {Dpdk, "dpdk"}};
-  //   auto it = names.find(kind);
-  //   if (it == names.end())
-  //     DPC_FATAL("internal: backend name is not registered for this backend kind");
-  //   return it->second;
-  // }
-  // static std::string getName(BackendConfig const& conf);
   enum State { Init = 1, Running, Stopping, Stopped };
 
   Backend() = delete;
@@ -124,6 +122,11 @@ protected:
   std::atomic<State> state_{State::Init};
 };
 
+/**
+ * @brief Base class for configuration options for each backend
+ *
+ * Holds no actual configuration options besides the backend kind
+ */
 class BackendConfig {
 
   friend class Context;
@@ -131,43 +134,154 @@ class BackendConfig {
 
 public:
   BackendConfig() = delete;
-  BackendConfig(Backend::Kind kind) : kind_(kind) {} // name(name) {}
   BackendConfig(BackendConfig &&) = default;
   BackendConfig(BackendConfig const &) = default;
-  BackendConfig &operator=(const BackendConfig &) = default;
-
+  BackendConfig(Backend::Kind kind) : kind_(kind) {}
+  BackendConfig &operator=(BackendConfig const &) = delete; // assignment: drop
+  BackendConfig &operator=(BackendConfig &&) = delete;
   virtual ~BackendConfig() = default;
-
-  // virtual std::string string() const { return "unknown-backend-config-string"; }
-  virtual std::string name() const { return Backend::name(kind_); };
 
   /**
    * @brief Create a backend config from the first one found in the json config. Throw if none
    */
-  static std::unique_ptr<BackendConfig> fromJson(const std::string & path);
+  static std::unique_ptr<BackendConfig> fromJson(const std::string &path);
   /**
    * @brief Create a config for Backend @p kind from the json config @p path. Throw if not found
    */
-  static std::unique_ptr<BackendConfig> fromJson(const std::string & path, Backend::Kind kind);
+  static std::unique_ptr<BackendConfig> fromJson(const std::string &path, Backend::Kind kind);
 
 public:
-  // template <typename T> bool is() const { return dynamic_cast<const T *>(this) != nullptr; }
-  // template <typename T> const T *as() const { return dynamic_cast<const T *>(this); }
-
+  template <typename T> T *as() {
+    static_assert(std::is_base_of_v<BackendConfig, T>, "T must derive from BackendConfig");
+    return dynamic_cast<T *>(this);
+  }
+  template <typename T> const T *as() const {
+    static_assert(std::is_base_of_v<BackendConfig, T>, "T must derive from BackendConfig");
+    return dynamic_cast<const T *>(this);
+  }
+  template <typename T> bool is() const {
+    static_assert(std::is_base_of_v<BackendConfig, T>, "T must derive from BackendConfig");
+    return dynamic_cast<const T *>(this) != nullptr;
+  }
   bool is(Backend::Kind kind) const { return kind_ == kind; }
 
 protected:
-  Backend::Kind kind_;
+  const Backend::Kind kind_;
 };
 
-///
-/// Base class for backend worker threads
-/// Each backend should extend this class
-///
-// class BackendWorker {
-// public:
-//   const uint16_t tid;
-// };
+/**
+ * @brief Base class for queue-driven backend workers.
+ * Owns a thread, a lock-free task queue, and lifecycle.
+ * A backend impl. calls start() / stop() / join() and push()
+ * The worker runs whatever execute() the subclass defines.
+ */
+class BackendWorker {
+public:
+  BackendWorker(const BackendWorker &) = delete;
+  BackendWorker &operator=(const BackendWorker &) = delete;
+
+  virtual ~BackendWorker() {
+    // Abort if subclass destructor did not join()
+    DPC_CHECK(!thread_.joinable(), "Worker subclass forgot to call stop(1) in its destructor");
+    stop(true);
+  }
+
+  /**
+   * @brief Start polling the queue and submitting tasks
+   * A worker is only started once. This call is idempotent.
+   */
+  void start() {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (state_ != State::Init) return;
+      state_ = State::Running;
+    }
+    cv_.notify_one();
+  }
+
+  /**
+   * @brief Stop the worker and optionally wait for its thread to finish
+   *
+   * A worker is only stopped once. This is call idempotent.
+   * If stop is called before start, the worker cannot start afterwards
+   *
+   * @param join if true wait the workers's thread
+   */
+  void stop(bool join = false) {
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (state_ == State::Stopped) return;
+      state_ = State::Stopped;
+    }
+    cv_.notify_one();
+    if (join) this->join();
+  }
+
+  // Push a task. Thread-safe; safe to call before or after start().
+
+  /**
+   * @brief Push a task to the worker's queue. Thread safe
+   *
+   * @param task the task
+   */
+  void push(std::shared_ptr<Task> task) {
+    DPC_CHECK(state_ == State::Running, "worker-{} is not running", id_);
+    queue_.push(task);
+    { std::lock_guard<std::mutex> lock(mutex_); }
+    cv_.notify_one();
+  }
+
+  void join() { this->thread_.join(); }
+
+  uint16_t id() const { return id_; }
+
+protected:
+  explicit BackendWorker(uint16_t id) : id_(id), thread_(&BackendWorker::main, this) {}
+
+  virtual Task::Status execute(std::shared_ptr<Task> task) = 0;
+
+  // Optional hooks.
+  virtual void on_task_abort(std::shared_ptr<Task> /*task*/) {}
+  virtual void on_task_start(std::shared_ptr<Task> /*task*/) {}
+  virtual void on_task_finish(std::shared_ptr<Task> /*task*/, Task::Status /*status*/) {}
+
+  void main() {
+    // Phase 1: park until start() or stop().
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      cv_.wait(lock, [this] { return state_ != State::Init; });
+      // if (state_ == State::Stopped) return; // stop() before start()
+    }
+
+    // Phase 2: process tasks until stop().
+    while (true) {
+      if (state_ == State::Stopped) break; // check first cause
+      std::shared_ptr<Task> task;
+      if (queue_.try_pop(task)) {
+        on_task_start(task);
+        on_task_finish(task, execute(task));
+        continue;
+      }
+      std::unique_lock<std::mutex> lock(mutex_);
+      cv_.wait(lock, [this] { return queue_.pending() > 0 || state_ == State::Stopped; });
+      // if (state_ == State::Stopped) break;
+    }
+
+    // Phase 3: drain.
+    std::shared_ptr<Task> task = nullptr;
+    while (queue_.try_pop(task)) on_task_abort(task);
+  }
+
+private:
+  enum class State { Init = 0, Running, Stopped };
+
+  uint16_t id_;
+  std::atomic<State> state_{State::Init};
+  MPSCQueue<std::shared_ptr<Task>> queue_;
+  std::mutex mutex_;
+  std::condition_variable cv_;
+  std::thread thread_;
+};
 
 } // namespace dpc
 #endif

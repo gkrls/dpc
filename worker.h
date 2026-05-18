@@ -75,12 +75,6 @@ protected:
   virtual void on_task_finish(std::shared_ptr<Task> /*task*/, Task::Status /*status*/) {}
 
 protected:
-  // First line of every subclass destructor.
-  void shutdown() {
-    stop();
-    if (thread_.joinable()) thread_.join();
-  }
-
   void main() {
     // Phase 1: park until start() or stop().
     {

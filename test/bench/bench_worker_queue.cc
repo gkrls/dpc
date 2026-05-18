@@ -1,6 +1,5 @@
 // test/bench/bench_worker.cc
 #include "dpc/backend/noop/noop_backend.h"
-#include "dpc/backend/worker.h"
 #include "dpc/device.h"
 #include "dpc/task.h"
 
@@ -14,9 +13,9 @@ using namespace std::chrono;
 
 namespace {
 
-class NoopTestWorker : public Worker {
+class NoopTestWorker : public BackendWorker {
 public:
-  NoopTestWorker() : Worker(0) {}
+  NoopTestWorker() : BackendWorker(0) {}
   std::atomic<int> finished{0};
 
 protected:

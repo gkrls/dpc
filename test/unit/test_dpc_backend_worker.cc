@@ -1,5 +1,5 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include "dpc/backend/worker.h"
+// #include "dpc/backend/worker.h"
 #include "dpc/task.h"
 
 #include "doctest/doctest.h"
@@ -20,6 +20,8 @@ using namespace std::chrono_literals;
 // ---------------------------------------------------------------------------
 // helpers
 // ---------------------------------------------------------------------------
+
+using Worker = dpc::BackendWorker;
 
 namespace {
 
