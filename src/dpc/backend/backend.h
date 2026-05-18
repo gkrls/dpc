@@ -136,7 +136,7 @@ public:
   BackendConfig() = delete;
   BackendConfig(BackendConfig &&) = default;
   BackendConfig(BackendConfig const &) = default;
-  BackendConfig(Backend::Kind kind) : kind_(kind) {}
+  BackendConfig(Backend::Kind kind) : kind_(kind), backend_name(Backend::name(kind)) {}
   BackendConfig &operator=(BackendConfig const &) = delete; // assignment: drop
   BackendConfig &operator=(BackendConfig &&) = delete;
   virtual ~BackendConfig() = default;
@@ -167,6 +167,9 @@ public:
 
 protected:
   const Backend::Kind kind_;
+
+public:
+  const std::string backend_name;
 };
 
 /**
@@ -263,7 +266,8 @@ protected:
         continue;
       }
       std::unique_lock<std::mutex> lock(mutex_);
-      cv_.wait(lock, [this] { return queue_.pending() > 0 || state_ == State::Stopped; });
+      // cv_.wait(lock, [this] { return queue_.pending() > 0 || state_ == State::Stopped; });
+      cv_.wait(lock, [this] { return !queue_.empty() || state_ == State::Stopped; });
       // if (state_ == State::Stopped) break;
     }
 

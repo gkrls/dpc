@@ -40,8 +40,8 @@ public:
   // Thread-safe, lock-free. Multiple producers OK.
   void push(T value) {
     auto node = new Node(std::move(value));
-    count.fetch_add(1, std::memory_order_relaxed);
     auto prev = head.exchange(node, std::memory_order_acq_rel);
+    count.fetch_add(1, std::memory_order_relaxed);
     prev->next.store(node, std::memory_order_release);
   }
 
@@ -56,8 +56,16 @@ public:
     return true;
   }
 
+  bool empty() const {
+    return tail->next.load(std::memory_order_acquire) == nullptr;
+  }
+
   // Lower bound. If >0, at least one push is in flight or completed.
   // May briefly return >0 when try_pop would still fail (visibility window).
+
+  // Lower bound on poppable items. If > 0, at least one try_pop will succeed.
+  // May underreport: a push that has linked its node but not yet incremented
+  // the counter is not yet counted. Safe to use as a wake predicate.
   uint32_t pending() const {
     return count.load(std::memory_order_relaxed);
   }

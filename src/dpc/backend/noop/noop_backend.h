@@ -80,7 +80,7 @@ public:
 protected:
   Task::Status execute(std::shared_ptr<Task> task) override {
     DPC_TRACE("{}-t{}: Running task {}", backend_.name(), id(), task->name);
-    std::this_thread::sleep_for(std::chrono::milliseconds(backend_.conf.op_ms));
+    if (backend_.conf.op_ms) std::this_thread::sleep_for(std::chrono::milliseconds(backend_.conf.op_ms));
     return Task::Completed;
   }
 

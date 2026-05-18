@@ -133,7 +133,7 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendC
 Context::~Context() { stop(); live_contexts.fetch_sub(1); }
 
 void Context::print() {
-  DPC_INFO("{}", std::string(100, '='));
+  // DPC_INFO("{}", std::string(100, '='));
   DPC_INFO("CTX: rank={} world={} scheduler={} watchdog={} (build {} {})", rank, world, hasScheduler() ? "on" : "off",
            this->timeout.count() ? fmt::format("{}ms", this->timeout.count()) : "off", DPC_BUILD_TYPE,
            DPC_AVX512_AVAILABLE ? "avx512"
@@ -141,7 +141,7 @@ void Context::print() {
                                 : "no-simd");
   device().print(true);
   backend().print(true);
-  DPC_INFO("{}", std::string(100, '='));
+  // DPC_INFO("{}", std::string(100, '='));
 }
 
 void Context::start() {
