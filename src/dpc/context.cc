@@ -56,13 +56,15 @@ std::unique_ptr<BackendConfig> resolveBackend() {
     return BackendConfig::fromJson(std::string{*config_path});
   }
 
-  if (backend_name) {
-    // kind given but no file — default-construct that kind
-    switch (Backend::get(std::string{*backend_name})) {
-    case Backend::Noop: return std::make_unique<NoopConfig>();
-    case Backend::Dpdk: return std::make_unique<DpdkConfig>();
-    }
-    DPC_ERROR("unhandled backend kind");
+  if (backend_name.has_value()) {
+    return BackendConfig::get(*backend_name);
+    // return BackendConfig::
+    // // kind given but no file — default-construct that kind
+    // switch (Backend::get(std::string{*backend_name})) {
+    // case Backend::Noop: return std::make_unique<NoopConfig>();
+    // case Backend::Dpdk: return std::make_unique<DpdkConfig>();
+    // }
+    // DPC_ERROR("unhandled backend kind");
   }
 
   // neither given — default Noop with defaults

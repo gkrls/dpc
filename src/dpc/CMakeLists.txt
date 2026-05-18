@@ -54,6 +54,8 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/config.h.in" "${CMAKE_BINARY_DIR}/in
 # Sources
 set(DPC_SOURCES
   backend/noop/noop_backend.cc
+  backend/sock/sock_backend.cc
+  backend/sock/sock_net.cc
   backend/backend.cc
   util/net_addr.cc
   util/net_iface.cc

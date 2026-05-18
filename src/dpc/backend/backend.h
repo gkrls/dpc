@@ -11,13 +11,12 @@
 #include <string>
 #include <string_view>
 #include <thread>
-#include <utility>
 
 namespace dpc {
 
-class Context;
+// class Context;
 class BackendConfig;
-class BackendWorker;
+// class BackendWorker;
 
 /**
  * @brief Base abstract class for all backends
@@ -25,23 +24,13 @@ class BackendWorker;
  * Only the context is meant to use it
  */
 class Backend {
-  friend class Context;
-  friend class BackendConfig;
-
 public:
   // ============= BACKEND REGISTRATION =============
   enum Kind {
     Noop = 0,
+    Sock,
 #if DPC_DPDK_ENABLED
     Dpdk,
-#endif
-  };
-
-private:
-  static inline constexpr std::pair<Backend::Kind, const char *> registry[] = {
-      {Backend::Noop, "noop"},
-#if DPC_DPDK_ENABLED
-      {Backend::Dpdk, "dpdk"},
 #endif
   };
   // ================================================
@@ -66,10 +55,7 @@ public:
    * @brief Print a summary about his backend to stdout
    */
   virtual void print(bool details) const = 0;
-  /**
-   * @brief Check if this backend supports a collective on a give datatype
-   */
-  virtual bool supports(Collective c, DataType t) const = 0;
+
   /**
    * @brief Retrieve the backend's configuration
    */
@@ -78,6 +64,11 @@ public:
    * @brief Fetch the context of this Backend
    */
   virtual Context &context() const { return ctx_; }
+
+  /**
+   * @brief Check if this backend supports a collective on a give datatype
+   */
+  virtual bool supports(Collective c, DataType t) const { return true; }
 
   /**
    * @brief Check if a backend is a certain kind
@@ -110,7 +101,7 @@ protected:
   /**
    * Create a backend instance
    */
-  static std::unique_ptr<Backend> create(Context &ctx, BackendConfig const &conf);
+  static std::unique_ptr<Backend> create(Context &ctx, const BackendConfig &conf);
   static std::unique_ptr<Backend> create(Context &ctx, Kind kind);
 
   Context &ctx_;
@@ -120,6 +111,28 @@ protected:
   const std::string name_;
 
   std::atomic<State> state_{State::Init};
+
+private:
+  template <typename B, typename C>
+  static std::unique_ptr<Backend> make_backend(Context &ctx, const BackendConfig &conf) {
+    static_assert(std::is_base_of_v<Backend, B>);
+    static_assert(std::is_base_of_v<BackendConfig, C>);
+    return std::unique_ptr<B>(new B(ctx, static_cast<const C &>(conf)));
+  }
+  template <typename C> static std::unique_ptr<BackendConfig> make_config(const std::string &path) {
+    static_assert(std::is_base_of_v<BackendConfig, C>);
+    return path.empty() ? std::make_unique<C>() : std::make_unique<C>(C::fromJson(path));
+  }
+  struct Entry {
+    Kind kind;
+    const char *name;
+    std::unique_ptr<Backend> (*make_backend)(Context &, const BackendConfig &);
+    std::unique_ptr<BackendConfig> (*make_config)(const std::string &);
+  };
+  static const std::vector<Entry> registry;
+
+  friend class BackendConfig;
+  friend class Context;
 };
 
 /**
@@ -149,6 +162,15 @@ public:
    * @brief Create a config for Backend @p kind from the json config @p path. Throw if not found
    */
   static std::unique_ptr<BackendConfig> fromJson(const std::string &path, Backend::Kind kind);
+  static std::unique_ptr<BackendConfig> fromJson(const std::string &path, std::string &name);
+  /**
+   * @brief Create a default config for backend @p kind
+   */
+  static std::unique_ptr<BackendConfig> get(Backend::Kind kind);
+  /**
+   * @brief Create a default config for backend @p name
+   */
+  static std::unique_ptr<BackendConfig> get(const std::string &name);
 
 public:
   template <typename T> T *as() {

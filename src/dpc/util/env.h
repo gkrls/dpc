@@ -7,7 +7,9 @@
 #include <cstdlib>
 #include <initializer_list>
 #include <optional>
-#include <string_view>
+// #include <string_view>
+
+#include <string>
 
 namespace dpc::env {
 
@@ -96,13 +98,13 @@ inline std::optional<int> getint(std::initializer_list<const char *> names, std:
   return static_cast<int>(res);
 }
 
-inline std::optional<std::string_view> getstr(std::initializer_list<const char *> names,
-                                              std::initializer_list<std::string_view> allowed = {}) {
+inline std::optional<std::string> getstr(std::initializer_list<const char *> names,
+                                         std::initializer_list<const std::string> allowed = {}) {
   const char *matched;
   const char *e = detail::first_set(names, matched);
   if (!e) return std::nullopt;
 
-  std::string_view v(e);
+  std::string v(e);
   if (allowed.size()) {
     for (auto a : allowed) {
       if (detail::iequals(v, a)) {
