@@ -1,12 +1,12 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest/doctest.h"
-
 #include "test_helper.h"
 
 #include <vector>
 
 using namespace dpc;
 using namespace dpc::test;
+using namespace std::chrono_literals;
 
 // ---------------------------------------------------------------------------
 // async submit
@@ -50,9 +50,7 @@ TEST_CASE("AllReduceAsync: multiple tasks all complete") {
     tasks.push_back(ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32));
   }
 
-  for (auto &t : tasks) {
-    CHECK(t->wait() == Task::Completed);
-  }
+  for (auto &t : tasks) { CHECK(t->wait() == Task::Completed); }
 }
 
 TEST_CASE("AllReduceAsync: task ids are unique and monotonic") {
@@ -67,7 +65,9 @@ TEST_CASE("AllReduceAsync: task ids are unique and monotonic") {
   CHECK(t2->id < t3->id);
 
   // Wait so they all release before context dies
-  t1->wait(); t2->wait(); t3->wait();
+  t1->wait();
+  t2->wait();
+  t3->wait();
 }
 
 // ---------------------------------------------------------------------------
@@ -97,7 +97,37 @@ TEST_CASE("Context: dropping with many tasks reaches terminal") {
       tasks.push_back(ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32));
     }
   }
-  for (auto &t : tasks) {
-    CHECK(t->isFinished());
-  }
+  for (auto &t : tasks) { CHECK(t->isFinished()); }
+}
+
+// ---------------------------------------------------------------------------
+// Context::wait
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Context::wait returns task status") {
+  auto ctx = MakeContext();
+  std::vector<uint32_t> data(64);
+  auto t = ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
+  CHECK(ctx->wait(t) == Task::Completed);
+  CHECK(t->isFinished());
+}
+
+TEST_CASE("Context::wait on already-finished task returns immediately") {
+  auto ctx = MakeContext();
+  std::vector<uint32_t> data(64);
+  auto t = ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
+  t->wait(); // ensure finished
+
+  auto t0 = std::chrono::steady_clock::now();
+  auto status = ctx->wait(t);
+  auto elapsed = std::chrono::steady_clock::now() - t0;
+  CHECK(status == Task::Completed);
+  CHECK(elapsed < 10ms);
+}
+
+TEST_CASE("Context::wait with timeout completes within timeout for fast task") {
+  auto ctx = MakeContext();
+  std::vector<uint32_t> data(64);
+  auto t = ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
+  CHECK(ctx->wait(t, 5s) == Task::Completed);
 }

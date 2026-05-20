@@ -1,34 +1,29 @@
 #ifndef DPC_CONTEXT_H
 #define DPC_CONTEXT_H
 
+#include "dpc/backend/backend.h"
+#include "dpc/device.h"
+#include "dpc/task.h"
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <memory>
 #include <thread>
 
-#include "dpc/backend/backend.h"
-#include "dpc/device.h"
-#include "dpc/task.h"
-
 namespace dpc {
 
 class Backend;
-// class SocketBackend;
 
 class Context final {
 public:
   enum State { Init = 1, Running, Stopping, Stopped };
   friend class FIFOScheduler;
   friend class Task;
-  // friend class Backend;
-  // friend class SocketBackend;
-  // friend class Task;
 
   /// Default operation timeout (ms)
   inline static const uint32_t kDefaultOperationTimeout = 30000;
 
-  // Nothing specified — device & backend from env or defaults
   Context(uint16_t rank, uint16_t world, uint32_t timeout = kDefaultOperationTimeout);
   // Device given — backend from env or default
   Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, uint32_t timeout = kDefaultOperationTimeout);
@@ -38,17 +33,6 @@ public:
   Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc,
           uint32_t timeout = kDefaultOperationTimeout);
 
-  // /**
-  //  * @brief Create context with default backend and settings
-  //  */
-  // Context(uint16_t rank, uint16_t world, DeviceConfig const &dc = kDefaultDevice,
-  //         uint32_t timeout = kDefaultOperationTimeout);
-  // Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, std::string be = Backend::getName(kDefaultBackend),
-  //         uint32_t timeout = kDefaultOperationTimeout);
-  // Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend::Kind be,
-  //         uint32_t timeout = kDefaultOperationTimeout);
-  // Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc,
-  //         uint32_t timeout = kDefaultOperationTimeout);
   ~Context();
 
   State state() { return state_; }
@@ -63,9 +47,20 @@ public:
   bool isStopping() { return state_ == Stopping; }
   bool isStopped() { return state_ == Stopped; }
 
-  Task::Status wait(std::shared_ptr<Task> task);
-  Task::Status wait(std::shared_ptr<Task> task, std::chrono::milliseconds timeout);
-  int waitAll();
+  /**
+   * @brief Block until a task finishes or the timeout elapses
+   * @param task the task to wait on
+   * @param timeout maximum time to wait; zero (default) means wait indefinitely
+   * @return The task's terminal status, or Task::Running if the timeout elapsed first
+   */
+  Task::Status wait(std::shared_ptr<Task> task, std::chrono::milliseconds timeout = std::chrono::milliseconds::zero());
+
+  /**
+   * @brief Block until all tracked tasks finish or the timeout elapses
+   * @param timeout maximum time to wait; zero (default) means wait indefinitely
+   * @return The number of tasks that reached a terminal status before the timeout elapsed
+   */
+  int waitAll(std::chrono::milliseconds timeout = std::chrono::milliseconds::zero());
 
 public:
   std::shared_ptr<Task> ReduceAsync(void const *sendbuf, void *recvbuf, uint64_t count, uint32_t root, DataType type,

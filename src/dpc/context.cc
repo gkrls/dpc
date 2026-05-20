@@ -87,32 +87,10 @@ Context::Context(uint16_t rank, uint16_t world, uint32_t timeout)
     : Context(rank, world, resolveDevice(), *resolveBackend(), timeout) {}
 Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, uint32_t timeout)
     : Context(rank, world, dc, *resolveBackend(), timeout) {}
-
-// Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, std::string be, uint32_t timeout)
-//     : Context(rank, world, dc, Backend::get(be), timeout) {}
-
-// Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend::Kind kind, uint32_t timeout)
-//     : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
-//       state_(Context::Init), timeout(timeout) {
-//   DPC_FATAL_IF(id > 0, "multiple contexts not supported yet");
-
-//   this->device_ = std::make_unique<Device>(dc);
-//   this->backend_ = Backend::create(*this, kind);
-//   DPC_FATAL_IF(!this->backend_, "failed to create backend '{}'", Backend::getName(kind)); // options().name);
-
-//   this->scheduler_ = kScheduler != "off" ? create_scheduler(*this, kScheduler) : nullptr;
-//   this->timeout = std::chrono::milliseconds(kTimeout.has_value() ? *kTimeout : Context::kDefaultOperationTimeout);
-
-//   // this->scheduler = std::make_unique<FIFOScheduler>(*this);
-//   // if (DPC_TIMEOUT) this->timeout = std::chrono::milliseconds(*DPC_TIMEOUT);
-
-//   // PrintContextInfo(*this);
-//   print();
-//   start();
-// }
+Context::Context(uint16_t rank, uint16_t world, BackendConfig const &bc, uint32_t timeout)
+    : Context(rank, world, resolveDevice(), bc, timeout) {}
 
 static std::atomic<int> live_contexts{0};
-
 
 Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc, uint32_t timeout)
     : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
@@ -132,7 +110,10 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendC
   start();
 }
 
-Context::~Context() { stop(); live_contexts.fetch_sub(1); }
+Context::~Context() {
+  stop();
+  live_contexts.fetch_sub(1);
+}
 
 void Context::print() {
   // DPC_INFO("{}", std::string(100, '='));
@@ -351,4 +332,35 @@ std::shared_ptr<Task> Context::AllGatherAsync(void const *sendbuf, void *recvbuf
 Task::Status Context::AllGather(void const *sendbuf, void *recvbuf, uint64_t sendcount, DataType type,
                                 CollectiveOptions const &opt) {
   return AllGatherAsync(sendbuf, recvbuf, sendcount, type, opt)->wait();
+}
+
+Task::Status Context::wait(std::shared_ptr<Task> task, std::chrono::milliseconds timeout) {
+  DPC_CHECK(&task->ctx == this, "cannot wait on task {} because it was not created by this context", task->name);
+  return timeout == std::chrono::milliseconds::zero() ? task->wait() : task->wait(timeout);
+}
+
+int Context::waitAll(std::chrono::milliseconds timeout) {
+  std::vector<std::shared_ptr<Task>> snapshot;
+  {
+    std::lock_guard<std::mutex> lock(tracking_mutex);
+    snapshot.reserve(tracking_tasks.size());
+    for (auto &[id, t] : tracking_tasks) snapshot.push_back(t);
+  }
+
+  int finished = 0;
+  if (timeout == std::chrono::milliseconds::zero()) {
+    for (auto &t : snapshot) {
+      t->wait();
+      ++finished;
+    }
+  } else {
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    for (auto &t : snapshot) {
+      auto remaining = deadline - std::chrono::steady_clock::now();
+      if (remaining <= std::chrono::milliseconds::zero()) break;
+      t->wait(std::chrono::duration_cast<std::chrono::milliseconds>(remaining));
+      if (t->isFinished()) ++finished;
+    }
+  }
+  return finished;
 }

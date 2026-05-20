@@ -59,8 +59,14 @@ public:
   virtual void start() override;
   virtual void stop() override;
   virtual void push(std::shared_ptr<Task> task) override;
+
 private:
+  struct TaskState { uint16_t remaining = 1; Task::Status worst = Task::Completed; };
+
   SockConfig conf;
+  std::mutex work_mutex;
+  std::unordered_map<Task::id_t, TaskState> work;
+  std::vector<std::unique_ptr<SockWorker>> workers;
 };
 
 class SockNet {
@@ -121,6 +127,6 @@ private:
 
 class SockWorker : public BackendWorker {};
 
-} // namespace dpc::sock
+} // namespace dpc
 
 #endif // !DPC_BACKEND_SOCK_H

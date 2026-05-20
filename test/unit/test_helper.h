@@ -1,13 +1,11 @@
 // test/test_helpers.h
 #ifndef DPC_TEST_HELPERS_H
 #define DPC_TEST_HELPERS_H
-#include <doctest/doctest.h>
-
 #include "dpc/backend/noop/noop_backend.h"
 #include "dpc/context.h"
 #include "dpc/device.h"
 
-
+#include <doctest/doctest.h>
 #include <memory>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -29,7 +27,6 @@ struct TaskFactory {
   }
 };
 
-
 // Run `body` in a forked subprocess. Returns the child's exit code.
 // If the child was killed by a signal, returns -signal.
 template <typename F> static int run_in_subprocess(F body) {
@@ -38,9 +35,9 @@ template <typename F> static int run_in_subprocess(F body) {
 
   if (pid == 0) {
     // Child
-  signal(SIGABRT, SIG_DFL);
-  body();
-  _exit(0);
+    signal(SIGABRT, SIG_DFL);
+    body();
+    _exit(0);
   }
 
   // Parent: wait for child
@@ -53,21 +50,22 @@ template <typename F> static int run_in_subprocess(F body) {
   return -1;
 }
 
-template <typename F>
-static bool subprocess_aborts(F body) {
+template <typename F> static bool subprocess_aborts(F body) {
   int rc = run_in_subprocess(body);
   return rc == -SIGABRT;
 }
 
-template <typename F>
-static bool subprocess_exits_with(int code, F body) {
-  return run_in_subprocess(body) == code;
-}
+template <typename F> static bool subprocess_exits_with(int code, F body) { return run_in_subprocess(body) == code; }
 
 } // namespace dpc::test
 
 #define CHECK_EXITS(code, fn) CHECK(dpc::test::subprocess_exits_with(code, fn))
 
 #define CHECK_ABORTS(fn) CHECK_EXITS(-SIGABRT, fn)
+
+#define CHECK_ABORT(block) CHECK(dpc::test::subprocess_aborts([&]() block))
+
+#define CHECK_ABORTS_BLOCK(block) \
+  CHECK(dpc::test::subprocess_aborts([&]() block))
 
 #endif

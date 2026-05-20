@@ -62,33 +62,17 @@ std::unique_ptr<BackendConfig> BackendConfig::get(const std::string &name) {
   DPC_ERROR("unknown backend {}", name);
 }
 
-/**
- * @brief Create a default config for backend @p name
- */
-// static std::unique_ptr<BackendConfig> get(const std::string &name){return nullptr; }
+
+
+
 
 std::unique_ptr<Backend> Backend::create(Context &ctx, Backend::Kind kind) {
   for (auto &e : registry)
     if (e.kind == kind) return e.make_backend(ctx, *BackendConfig::get(kind));
-  //   switch (kind) {
-  //   case Noop: return std::unique_ptr<NoopBackend>(new NoopBackend(ctx));
-  // #if DPC_DPDK_ENABLED
-  //   case Dpdk: return std::unique_ptr<DpdkBackend>(new DpdkBackend(ctx));
-  // #endif
-  //   default: DPC_UNREACHABLE();
-  //   }
   DPC_UNREACHABLE("unhandled kind");
 }
 
 std::unique_ptr<Backend> Backend::create(Context &ctx, BackendConfig const &conf) {
-  //   if (conf.is(Backend::Noop))
-  //     return std::unique_ptr<NoopBackend>(new NoopBackend(ctx, static_cast<const NoopConfig &>(conf)));
-  // #if DPC_DPDK_ENABLED
-  //   else if (conf.is(Backend::Dpdk))
-  //     return std::unique_ptr<DpdkBackend>(new DpdkBackend(ctx, static_cast<const DpdkConfig &>(conf)));
-  // #endif
-  //   else DPC_ERROR("unknown backend");
-  //   return nullptr;
   for (auto &e : registry)
     if (e.kind == conf.kind_) return e.make_backend(ctx, conf);
   DPC_UNREACHABLE("unhandled kind");

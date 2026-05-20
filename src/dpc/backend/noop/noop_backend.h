@@ -7,14 +7,9 @@
 #include "dpc/util/log.h"
 
 #include <memory>
-#include <mutex>
 #include <thread>
-#include <unordered_map>
 
 namespace dpc {
-
-class NoopBackend;
-class NoopWorker;
 
 class NoopConfig : public BackendConfig {
 public:
@@ -25,26 +20,16 @@ public:
   static NoopConfig fromJson(const std::string &path);
 };
 
-class NoopBackend : public Backend {
-  friend class Context;
-  friend class Backend;
-  friend class NoopWorker;
-
-public:
-  using Config = NoopConfig;
-
-  ~NoopBackend() noexcept override {
-    try {
-      stop();
-    } catch (...) {}
-  }
+class NoopBackend : public MultiworkerBackend {
+  friend class Backend;    // Backend needs to be able to build
+  friend class NoopWorker; // Workers need to call notify
 
 private:
   NoopBackend(Context &ctx, NoopConfig const &conf = {});
 
-  virtual void start() override;
-  virtual void stop() override;
-  virtual void push(std::shared_ptr<Task> task) override;
+  // virtual void start() override;
+  // virtual void stop() override;
+  // virtual void push(std::shared_ptr<Task> task) override;
   virtual void print(bool details) const override;
 
   virtual bool supports(Collective, DataType) const override { return true; };
@@ -53,23 +38,7 @@ private:
    */
   virtual const BackendConfig &config() const override { return conf; };
 
-  // Called by workers to notify when start/finish a task
-  void notify(uint16_t tid, std::shared_ptr<Task> task, Task::Status res);
-
-  void worker_loop();
-
-  struct TaskState {
-    uint16_t remaining = 1;
-    Task::Status worst = Task::Completed;
-  };
-
-  // std::atomic<State> state{Backend::Init};
   NoopConfig conf;
-  std::once_flag start_flag;
-  std::once_flag stop_flag;
-  std::mutex tasks_mutex;
-  std::unordered_map<Task::id_t, TaskState> tasks;
-  std::vector<std::unique_ptr<NoopWorker>> workers;
 };
 
 class NoopWorker : public BackendWorker {

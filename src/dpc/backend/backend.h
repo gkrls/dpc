@@ -309,5 +309,86 @@ private:
   std::thread thread_;
 };
 
+/**
+ * @brief Base class for Backends delegating work to @BackendWorker threads
+ * Keeps track of task state and tracks worker completions
+ */
+class MultiworkerBackend : public Backend {
+protected:
+  MultiworkerBackend() = delete;
+  MultiworkerBackend(Context &ctx, Backend::Kind kind) : Backend(ctx, kind) {}
+  virtual ~MultiworkerBackend() { stop(); }
+
+  void start() override {
+    std::call_once(start_flag, [this] {
+      state_ = State::Running;
+      for (auto &w : workers) w->start();
+    });
+  }
+
+  void stop() override {
+    std::call_once(stop_flag, [this] {
+      state_ = State::Stopping;
+      for (auto &w : workers) w->stop();
+      for (auto &w : workers) w->join();
+      state_ = State::Stopped;
+    });
+  }
+
+  void push(std::shared_ptr<Task> task) override {
+    DPC_CHECK(state_ == Running, "backend is not in Running state. Make sure start() is called before push()");
+    DPC_CHECK(task->getStatus() == Task::Created, "task {} already submitted to backend", task->name);
+
+    {
+      std::unique_lock<std::mutex> lock(work_mutex);
+      auto [it, inserted] =
+          work.try_emplace(task->id, TaskProgress{static_cast<uint16_t>(workers.size()), Task::Completed});
+      DPC_CHECK(inserted, "attempted to push task {} more than once", task->name);
+    }
+    task->setStatus(Task::Submitted);
+    for (auto &worker : workers) worker->push(task);
+  }
+
+  virtual void notify(uint16_t tid, std::shared_ptr<Task> task, Task::Status status) {
+    if (status == Task::Running) {
+      task->setStatus(Task::Running);
+      return;
+    }
+
+    Task::Status final_status;
+    bool done = false;
+    {
+      std::lock_guard<std::mutex> lock(work_mutex);
+      auto it = work.find(task->id);
+      DPC_CHECK(it != work.end(), "t-{} notify for unknown task {}", tid, task->name);
+      DPC_CHECK(it->second.remaining_workers > 0, "t-{} notify for task {} with 0 workers remaining", tid, task->name);
+
+      if (status > it->second.worst) it->second.worst = status;
+
+      if (--it->second.remaining_workers == 0) {
+        final_status = it->second.worst;
+        work.erase(it);
+        done = true;
+      }
+    }
+
+    if (done) task->setStatus(final_status);
+  }
+
+protected:
+  // Let subclasses populate this with whatever BackendWorker class they use
+  std::vector<std::unique_ptr<BackendWorker>> workers;
+
+private:
+  struct TaskProgress {
+    uint16_t remaining_workers = 1;
+    Task::Status worst = Task::Completed;
+  };
+  std::once_flag start_flag;
+  std::once_flag stop_flag;
+  std::mutex work_mutex;
+  std::unordered_map<Task::id_t, TaskProgress> work;
+};
+
 } // namespace dpc
 #endif

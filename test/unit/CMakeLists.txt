@@ -11,6 +11,14 @@ add_executable(test_dpc_api_validation test_dpc_api_validation.cc)
 target_link_libraries(test_dpc_api_validation PRIVATE doctest::doctest dpc)
 doctest_discover_tests(test_dpc_api_validation TEST_PREFIX "api/validation::")
 
+add_executable(test_dpc_backend_multiworker test_dpc_backend_multiworker.cc)
+target_link_libraries(test_dpc_backend_multiworker PRIVATE doctest::doctest dpc)
+doctest_discover_tests(test_dpc_backend_multiworker TEST_PREFIX "backend/multiworker::")
+
+add_executable(test_dpc_backend_registry test_dpc_backend_registry.cc)
+target_link_libraries(test_dpc_backend_registry PRIVATE doctest::doctest dpc)
+doctest_discover_tests(test_dpc_backend_registry TEST_PREFIX "backend/registry::")
+
 add_executable(test_dpc_backend_worker test_dpc_backend_worker.cc)
 target_link_libraries(test_dpc_backend_worker PRIVATE doctest::doctest dpc)
 doctest_discover_tests(test_dpc_backend_worker TEST_PREFIX "backend/worker::")
@@ -19,13 +27,14 @@ add_executable(test_dpc_config_parsing test_dpc_config_parsing.cc)
 target_link_libraries(test_dpc_config_parsing PRIVATE doctest::doctest dpc)
 doctest_discover_tests(test_dpc_config_parsing TEST_PREFIX "config::")
 
+add_executable(test_dpc_context_collectives test_dpc_context_collectives.cc)
+target_link_libraries(test_dpc_context_collectives PRIVATE doctest::doctest dpc)
+doctest_discover_tests(test_dpc_context_collectives TEST_PREFIX "context/collectives::")
+
+
 add_executable(test_dpc_context_lifecycle test_dpc_context_lifecycle.cc)
 target_link_libraries(test_dpc_context_lifecycle PRIVATE doctest::doctest dpc)
 doctest_discover_tests(test_dpc_context_lifecycle TEST_PREFIX "context/lifecycle::")
-
-add_executable(test_dpc_context_submit test_dpc_context_submit.cc)
-target_link_libraries(test_dpc_context_submit PRIVATE doctest::doctest dpc)
-doctest_discover_tests(test_dpc_context_submit TEST_PREFIX "context/submit::")
 
 add_executable(test_dpc_context_watchdog test_dpc_context_watchdog.cc)
 target_link_libraries(test_dpc_context_watchdog PRIVATE doctest::doctest dpc)
