@@ -74,7 +74,7 @@ TEST_CASE("AllReduceAsync: task ids are unique and monotonic") {
 // shutdown / pre-abort
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Context: dropping aborts unfinished tasks") {
+TEST_CASE("dropping aborts unfinished tasks") {
   std::shared_ptr<Task> task;
   {
     // Slow tasks so we can drop ctx before completion
@@ -88,7 +88,7 @@ TEST_CASE("Context: dropping aborts unfinished tasks") {
   CHECK((status == Task::Aborted || status == Task::Completed));
 }
 
-TEST_CASE("Context: dropping with many tasks reaches terminal") {
+TEST_CASE("dropping with many tasks reaches terminal") {
   std::vector<std::shared_ptr<Task>> tasks;
   {
     auto ctx = MakeContext(/*op_ms=*/50, /*threads=*/2);
@@ -104,7 +104,7 @@ TEST_CASE("Context: dropping with many tasks reaches terminal") {
 // Context::wait
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Context::wait returns task status") {
+TEST_CASE("wait returns task status") {
   auto ctx = MakeContext();
   std::vector<uint32_t> data(64);
   auto t = ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
@@ -112,7 +112,7 @@ TEST_CASE("Context::wait returns task status") {
   CHECK(t->isFinished());
 }
 
-TEST_CASE("Context::wait on already-finished task returns immediately") {
+TEST_CASE("wait on already-finished task returns immediately") {
   auto ctx = MakeContext();
   std::vector<uint32_t> data(64);
   auto t = ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
@@ -125,9 +125,36 @@ TEST_CASE("Context::wait on already-finished task returns immediately") {
   CHECK(elapsed < 10ms);
 }
 
-TEST_CASE("Context::wait with timeout completes within timeout for fast task") {
+TEST_CASE("wait with timeout completes within timeout for fast task") {
   auto ctx = MakeContext();
   std::vector<uint32_t> data(64);
   auto t = ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
   CHECK(ctx->wait(t, 5s) == Task::Completed);
+}
+
+TEST_CASE("concurrent submits from many threads") {
+  auto ctx = MakeContext(/*op_ms=*/1, /*threads=*/4);
+  std::vector<uint32_t> data(64);
+
+  constexpr int producers = 8;
+  constexpr int per_producer = 100;
+  std::vector<std::shared_ptr<Task>> all_tasks;
+  std::mutex tasks_mtx;
+  std::vector<std::thread> threads;
+
+  for (int p = 0; p < producers; ++p) {
+    threads.emplace_back([&] {
+      for (int i = 0; i < per_producer; ++i) {
+        auto t = ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
+        std::lock_guard<std::mutex> lock(tasks_mtx);
+        all_tasks.push_back(t);
+      }
+    });
+  }
+  for (auto &t : threads) t.join();
+
+  CHECK(all_tasks.size() == producers * per_producer);
+  for (auto &t : all_tasks) {
+    CHECK(t->wait() == Task::Completed);
+  }
 }

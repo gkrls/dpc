@@ -125,10 +125,6 @@ private:
   std::unique_ptr<Backend> backend_ = nullptr;
   std::unique_ptr<Scheduler> scheduler_ = nullptr;
 
-  std::thread watchdog_thread;
-  std::atomic<pid_t> watchdog_thread_id{0};
-  std::chrono::milliseconds timeout{0};
-
   // Task tracking
   std::atomic<uint64_t> submitted_{0};
   std::atomic<uint64_t> completed_{0};
@@ -137,6 +133,10 @@ private:
   std::atomic<uint64_t> rejected_{0};
   std::mutex tracking_mutex;
   std::unordered_map<uint64_t, std::shared_ptr<Task>> tracking_tasks;
+
+  std::chrono::milliseconds timeout{0};
+  std::atomic<pid_t> watchdog_thread_id{0};
+  std::thread watchdog_thread;
 };
 
 // scheduler stuff

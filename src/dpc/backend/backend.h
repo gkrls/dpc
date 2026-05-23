@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -86,12 +87,12 @@ protected:
    * @brief Start the backend, creating all necessary resources
    * After this call the backend is ready to execute tasks
    */
-  virtual void start() = 0;
+  virtual void start() { /* empty */; }
   /**
    * @brief Stop the backend, destroying resources etc
    * After this call the backend cannot accept tasks
    */
-  virtual void stop() = 0;
+  virtual void stop() { /* empty */ };
   /**
    * @brief Submit a task to the backend for execution
    * This is a non-blocking call that should return immediatelly
@@ -149,10 +150,24 @@ public:
   BackendConfig() = delete;
   BackendConfig(BackendConfig &&) = default;
   BackendConfig(BackendConfig const &) = default;
-  BackendConfig(Backend::Kind kind) : kind_(kind), backend_name(Backend::name(kind)) {}
-  BackendConfig &operator=(BackendConfig const &) = delete; // assignment: drop
+  BackendConfig(Backend::Kind kind) : backend_name(Backend::name(kind)), kind_(kind) {}
+  BackendConfig &operator=(BackendConfig const &) = delete;
   BackendConfig &operator=(BackendConfig &&) = delete;
   virtual ~BackendConfig() = default;
+
+  template <typename T> T *as() {
+    static_assert(std::is_base_of_v<BackendConfig, T>, "T must derive from BackendConfig");
+    return dynamic_cast<T *>(this);
+  }
+  template <typename T> const T *as() const {
+    static_assert(std::is_base_of_v<BackendConfig, T>, "T must derive from BackendConfig");
+    return dynamic_cast<const T *>(this);
+  }
+  template <typename T> bool is() const {
+    static_assert(std::is_base_of_v<BackendConfig, T>, "T must derive from BackendConfig");
+    return dynamic_cast<const T *>(this) != nullptr;
+  }
+  bool is(Backend::Kind kind) const { return kind_ == kind; }
 
   /**
    * @brief Create a backend config from the first one found in the json config. Throw if none
@@ -172,27 +187,13 @@ public:
    */
   static std::unique_ptr<BackendConfig> get(const std::string &name);
 
-public:
-  template <typename T> T *as() {
-    static_assert(std::is_base_of_v<BackendConfig, T>, "T must derive from BackendConfig");
-    return dynamic_cast<T *>(this);
-  }
-  template <typename T> const T *as() const {
-    static_assert(std::is_base_of_v<BackendConfig, T>, "T must derive from BackendConfig");
-    return dynamic_cast<const T *>(this);
-  }
-  template <typename T> bool is() const {
-    static_assert(std::is_base_of_v<BackendConfig, T>, "T must derive from BackendConfig");
-    return dynamic_cast<const T *>(this) != nullptr;
-  }
-  bool is(Backend::Kind kind) const { return kind_ == kind; }
+  const std::string backend_name;
 
 protected:
   const Backend::Kind kind_;
-
-public:
-  const std::string backend_name;
 };
+
+class MultiworkerBackend;
 
 /**
  * @brief Base class for queue-driven backend workers.
@@ -204,7 +205,6 @@ class BackendWorker {
 public:
   BackendWorker(const BackendWorker &) = delete;
   BackendWorker &operator=(const BackendWorker &) = delete;
-
   virtual ~BackendWorker() {
     // Abort if subclass destructor did not join()
     DPC_CHECK(!thread_.joinable(), "Worker subclass forgot to call stop(1) in its destructor");
@@ -215,14 +215,7 @@ public:
    * @brief Start polling the queue and submitting tasks
    * A worker is only started once. This call is idempotent.
    */
-  void start() {
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (state_ != State::Init) return;
-      state_ = State::Running;
-    }
-    cv_.notify_one();
-  }
+  void start();
 
   /**
    * @brief Stop the worker and optionally wait for its thread to finish
@@ -232,150 +225,65 @@ public:
    *
    * @param join if true wait the workers's thread
    */
-  void stop(bool join = false) {
-    {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (state_ == State::Stopped) return;
-      state_ = State::Stopped;
-    }
-    cv_.notify_one();
-    if (join) this->join();
-  }
-
-  // Push a task. Thread-safe; safe to call before or after start().
+  void stop(bool join = false);
 
   /**
    * @brief Push a task to the worker's queue. Thread safe
    *
    * @param task the task
    */
-  void push(std::shared_ptr<Task> task) {
-    DPC_CHECK(state_ == State::Running, "worker-{} is not running", id_);
-    queue_.push(task);
-    { std::lock_guard<std::mutex> lock(mutex_); }
-    cv_.notify_one();
-  }
+  void push(std::shared_ptr<Task> task);
 
-  void join() { this->thread_.join(); }
+  /**
+   * @brief Block until the worker's thread finishes
+   */
+  void join() { if (thread_.joinable()) thread_.join(); }
 
+  /**
+   * @brief Get the worker's id (within the backend)
+   */
   uint16_t id() const { return id_; }
-
-protected:
-  explicit BackendWorker(uint16_t id) : id_(id), thread_(&BackendWorker::main, this) {}
-
-  virtual Task::Status execute(std::shared_ptr<Task> task) = 0;
 
   // Optional hooks.
   virtual void on_task_abort(std::shared_ptr<Task> /*task*/) {}
   virtual void on_task_start(std::shared_ptr<Task> /*task*/) {}
   virtual void on_task_finish(std::shared_ptr<Task> /*task*/, Task::Status /*status*/) {}
 
-  void main() {
-    // Phase 1: park until start() or stop().
-    {
-      std::unique_lock<std::mutex> lock(mutex_);
-      cv_.wait(lock, [this] { return state_ != State::Init; });
-      // if (state_ == State::Stopped) return; // stop() before start()
-    }
-
-    // Phase 2: process tasks until stop().
-    while (true) {
-      if (state_ == State::Stopped) break; // check first cause
-      std::shared_ptr<Task> task;
-      if (queue_.try_pop(task)) {
-        on_task_start(task);
-        on_task_finish(task, execute(task));
-        continue;
-      }
-      std::unique_lock<std::mutex> lock(mutex_);
-      // cv_.wait(lock, [this] { return queue_.pending() > 0 || state_ == State::Stopped; });
-      cv_.wait(lock, [this] { return !queue_.empty() || state_ == State::Stopped; });
-      // if (state_ == State::Stopped) break;
-    }
-
-    // Phase 3: drain.
-    std::shared_ptr<Task> task = nullptr;
-    while (queue_.try_pop(task)) on_task_abort(task);
-  }
+protected:
+  explicit BackendWorker(uint16_t id, MultiworkerBackend &backend)
+      : id_(id), backend_(backend), thread_(&BackendWorker::main, this) {}
+  virtual Task::Status execute(std::shared_ptr<Task> task) = 0;
 
 private:
-  enum class State { Init = 0, Running, Stopped };
-
+  void main();
   uint16_t id_;
-  std::atomic<State> state_{State::Init};
-  MPSCQueue<std::shared_ptr<Task>> queue_;
+  MultiworkerBackend &backend_;
+  enum class State { Init = 0, Running, Stopped };
   std::mutex mutex_;
   std::condition_variable cv_;
-  std::thread thread_;
+  std::atomic<State> state_{State::Init};
+  MPSCQueue<std::shared_ptr<Task>> queue_;
+  std::thread thread_; // must be last!
 };
 
 /**
  * @brief Base class for Backends delegating work to @BackendWorker threads
- * Keeps track of task state and tracks worker completions
+ * Owns backend workers, keeps track of task state and tracks worker task completions
  */
 class MultiworkerBackend : public Backend {
-protected:
+  friend class BackendWorker;
+
+public:
   MultiworkerBackend() = delete;
   MultiworkerBackend(Context &ctx, Backend::Kind kind) : Backend(ctx, kind) {}
   virtual ~MultiworkerBackend() { stop(); }
 
-  void start() override {
-    std::call_once(start_flag, [this] {
-      state_ = State::Running;
-      for (auto &w : workers) w->start();
-    });
-  }
-
-  void stop() override {
-    std::call_once(stop_flag, [this] {
-      state_ = State::Stopping;
-      for (auto &w : workers) w->stop();
-      for (auto &w : workers) w->join();
-      state_ = State::Stopped;
-    });
-  }
-
-  void push(std::shared_ptr<Task> task) override {
-    DPC_CHECK(state_ == Running, "backend is not in Running state. Make sure start() is called before push()");
-    DPC_CHECK(task->getStatus() == Task::Created, "task {} already submitted to backend", task->name);
-
-    {
-      std::unique_lock<std::mutex> lock(work_mutex);
-      auto [it, inserted] =
-          work.try_emplace(task->id, TaskProgress{static_cast<uint16_t>(workers.size()), Task::Completed});
-      DPC_CHECK(inserted, "attempted to push task {} more than once", task->name);
-    }
-    task->setStatus(Task::Submitted);
-    for (auto &worker : workers) worker->push(task);
-  }
-
-  virtual void notify(uint16_t tid, std::shared_ptr<Task> task, Task::Status status) {
-    if (status == Task::Running) {
-      task->setStatus(Task::Running);
-      return;
-    }
-
-    Task::Status final_status;
-    bool done = false;
-    {
-      std::lock_guard<std::mutex> lock(work_mutex);
-      auto it = work.find(task->id);
-      DPC_CHECK(it != work.end(), "t-{} notify for unknown task {}", tid, task->name);
-      DPC_CHECK(it->second.remaining_workers > 0, "t-{} notify for task {} with 0 workers remaining", tid, task->name);
-
-      if (status > it->second.worst) it->second.worst = status;
-
-      if (--it->second.remaining_workers == 0) {
-        final_status = it->second.worst;
-        work.erase(it);
-        done = true;
-      }
-    }
-
-    if (done) task->setStatus(final_status);
-  }
+  virtual void start() override;
+  virtual void stop() override;
+  virtual void push(std::shared_ptr<Task> task) override;
 
 protected:
+  virtual void notify(uint16_t tid, std::shared_ptr<Task> task, Task::Status status);
   // Let subclasses populate this with whatever BackendWorker class they use
   std::vector<std::unique_ptr<BackendWorker>> workers;
 
@@ -386,6 +294,7 @@ private:
   };
   std::once_flag start_flag;
   std::once_flag stop_flag;
+  std::mutex state_mutex;
   std::mutex work_mutex;
   std::unordered_map<Task::id_t, TaskProgress> work;
 };

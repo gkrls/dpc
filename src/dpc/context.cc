@@ -211,11 +211,11 @@ void Context::release(Task &task) {
 }
 
 std::shared_ptr<Task> Context::submit(std::shared_ptr<Task> task) {
-  if (state_ != Running) {
-    rejected_.fetch_add(1);
-    task->setStatus(Task::Aborted);
-    return task;
-  }
+  // if (state_ != Running) {
+  //   rejected_.fetch_add(1);
+  //   task->setStatus(Task::Aborted);
+  //   return task;
+  // }
 
   {
     std::lock_guard<std::mutex> lock(tracking_mutex);
@@ -261,7 +261,7 @@ void Context::watchdog() {
 
       for (auto &[id, task] : tracking_tasks) {
         if (task->isRunning()) {
-          auto duration = now - task->stats.time.start;
+          auto duration = now - task->stats.time.start.load();
           if (duration > timeout) {
             DPC_FATAL("watchdog: task {} did not finish within {} ms", task->name,
                       std::chrono::duration_cast<std::chrono::milliseconds>(duration).count(), timeout.count());

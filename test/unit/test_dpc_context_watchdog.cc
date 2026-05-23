@@ -34,13 +34,6 @@ TEST_CASE("zero timeout disables watchdog") {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("fires when task overruns timeout") {
-  // int rc = run_in_subprocess([] {
-  //   auto ctx = MakeContext(/*op_ms=*/500, /*threads=*/2, /*timeout_ms=*/50);
-  //   std::vector<uint32_t> data(64);
-  //   auto task = ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
-  //   task->wait();
-  // });
-  // CHECK(rc == 1);
   CHECK_ABORTS([] {
     auto ctx = MakeContext(/*op_ms=*/500, /*threads=*/2, /*timeout_ms=*/50);
     std::vector<uint32_t> data(64);
@@ -50,13 +43,6 @@ TEST_CASE("fires when task overruns timeout") {
 }
 
 TEST_CASE("fires during shutdown if backend hangs") {
-  // int rc = run_in_subprocess([] {
-  //   auto ctx = MakeContext(/*op_ms=*/500, /*threads=*/2, /*timeout_ms=*/50);
-  //   std::vector<uint32_t> data(64);
-  //   ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
-  // });
-  // INFO("rc=" << rc);
-  // CHECK(rc == 1);
   CHECK_ABORTS([] {
     auto ctx = MakeContext(/*op_ms=*/500, /*threads=*/2, /*timeout_ms=*/50);
     std::vector<uint32_t> data(64);

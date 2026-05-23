@@ -44,7 +44,7 @@ private:
 class NoopWorker : public BackendWorker {
 public:
   // friend class NoopBackend;
-  NoopWorker(uint16_t tid, NoopBackend &backend) : BackendWorker(tid), backend_(backend) {}
+  NoopWorker(uint16_t tid, NoopBackend &backend) : BackendWorker(tid, backend), backend_(backend) {}
 
 protected:
   Task::Status execute(std::shared_ptr<Task> task) override {
@@ -53,9 +53,9 @@ protected:
     return Task::Completed;
   }
 
-  void on_task_start(std::shared_ptr<Task> task) override { backend_.notify(id(), task, Task::Running); }
-  void on_task_finish(std::shared_ptr<Task> task, Task::Status status) override { backend_.notify(id(), task, status); }
-  void on_task_abort(std::shared_ptr<Task> task) override { backend_.notify(id(), task, Task::Aborted); }
+  // void on_task_start(std::shared_ptr<Task> task) override { backend_.notify(id(), task, Task::Running); }
+  // void on_task_finish(std::shared_ptr<Task> task, Task::Status status) override { backend_.notify(id(), task, status); }
+  // void on_task_abort(std::shared_ptr<Task> task) override { backend_.notify(id(), task, Task::Aborted); }
 
 private:
   NoopBackend &backend_;

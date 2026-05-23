@@ -25,24 +25,19 @@ using namespace std::chrono_literals;
 
 namespace {
 
-class ControlBackend;
+class ControlBackend; // forward decl
 
 class ControlWorker : public BackendWorker {
 public:
-  ControlWorker(uint16_t tid, ControlBackend &be) : BackendWorker(tid), be_(be) {}
+  ControlWorker(uint16_t tid, ControlBackend &be); // declaration only
   ~ControlWorker() { stop(true); }
-
-  // Status this worker will return from execute(). Default Completed.
   std::atomic<Task::Status> next_status{Task::Completed};
 
 protected:
   Task::Status execute(std::shared_ptr<Task>) override { return next_status.load(); }
-  void on_task_start(std::shared_ptr<Task> task) override;
-  void on_task_finish(std::shared_ptr<Task> task, Task::Status status) override;
-  void on_task_abort(std::shared_ptr<Task> task) override;
 
-private:
-  ControlBackend &be_;
+  // private:
+  //   ControlBackend &be_;
 };
 
 class ControlBackend : public MultiworkerBackend {
@@ -50,7 +45,6 @@ public:
   ControlBackend(Context &ctx, uint16_t n_workers) : MultiworkerBackend(ctx, Backend::Noop), conf_(0, n_workers) {
     for (uint16_t i = 0; i < n_workers; ++i) workers.push_back(std::make_unique<ControlWorker>(i, *this));
   }
-
   // Public re-exposure of protected base methods for tests.
   using MultiworkerBackend::notify;
   using MultiworkerBackend::push;
@@ -67,9 +61,29 @@ private:
   NoopConfig conf_;
 };
 
-void ControlWorker::on_task_start(std::shared_ptr<Task> task) { be_.notify(id(), task, Task::Running); }
-void ControlWorker::on_task_finish(std::shared_ptr<Task> task, Task::Status s) { be_.notify(id(), task, s); }
-void ControlWorker::on_task_abort(std::shared_ptr<Task> task) { be_.notify(id(), task, Task::Aborted); }
+ControlWorker::ControlWorker(uint16_t tid, ControlBackend &be) : BackendWorker(tid, be) {}
+
+// class ControlWorker : public BackendWorker {
+// public:
+//   ControlWorker(uint16_t tid, ControlBackend &be) : BackendWorker(tid, be), be_(be) {}
+//   ~ControlWorker() { stop(true); }
+
+//   // Status this worker will return from execute(). Default Completed.
+//   std::atomic<Task::Status> next_status{Task::Completed};
+
+// protected:
+//   Task::Status execute(std::shared_ptr<Task>) override { return next_status.load(); }
+//   // void on_task_start(std::shared_ptr<Task> task) override;
+//   // void on_task_finish(std::shared_ptr<Task> task, Task::Status status) override;
+//   // void on_task_abort(std::shared_ptr<Task> task) override;
+
+// private:
+//   ControlBackend &be_;
+// };
+
+// void ControlWorker::on_task_start(std::shared_ptr<Task> task) { be_.notify(id(), task, Task::Running); }
+// void ControlWorker::on_task_finish(std::shared_ptr<Task> task, Task::Status s) { be_.notify(id(), task, s); }
+// void ControlWorker::on_task_abort(std::shared_ptr<Task> task) { be_.notify(id(), task, Task::Aborted); }
 
 template <typename Pred> bool wait_for(Pred pred, std::chrono::milliseconds timeout = 1s) {
   auto deadline = std::chrono::steady_clock::now() + timeout;

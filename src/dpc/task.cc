@@ -1,7 +1,9 @@
 #include "dpc/task.h"
+
 #include "dpc/context.h"
 #include "dpc/util/error.h"
 #include "dpc/util/log.h"
+
 #include "fmt/core.h"
 
 #include <atomic>
@@ -56,7 +58,8 @@ Task::Task(Context &ctx, bool async, const void *sendbuf, void *recvbuf, uint64_
     : ctx(ctx), id(nextTaskID()), collname(collectiveName(coll)), name(std::to_string(id) + "." + collname),
       async(async), sendbuf(sendbuf), recvbuf(recvbuf), sendcount(sendcount), recvcount(recvcount), type(type),
       coll(coll), reduce(reduce), opt(opt), stats{} {
-  stats.time.create = std::chrono::steady_clock::now();
+  // stats.time.create = std::chrono::steady_clock::now();
+  stats.time.create.store(std::chrono::steady_clock::now());
 }
 
 // --- factory methods ---
@@ -185,11 +188,13 @@ bool Task::setStatus(Status s) {
   if (status >= Completed) return false; // already terminal
   if (s <= status) return false;         // no backward non-terminal moves
 
-  if (s == Running) stats.time.start = std::chrono::steady_clock::now();
+  // if (s == Running) stats.time.start = std::chrono::steady_clock::now();
+  if (s == Running) stats.time.start.store(std::chrono::steady_clock::now());
   status = s;
 
   if (status >= Completed) {
-    if (s == Completed) stats.time.finish = std::chrono::steady_clock::now();
+    // if (s == Completed) stats.time.finish = std::chrono::steady_clock::now();
+    if (s == Completed) stats.time.finish.store(std::chrono::steady_clock::now());
     statusCv.notify_all();
     ctx.release(*this);
     if (isAborted() && on_abort_cb) on_abort_cb(*this);
@@ -246,9 +251,10 @@ std::unordered_map<std::string, float> Task::getStats() {
   std::unordered_map<std::string, float> out;
 
   float time_ms = 0.0f;
-  if (stats.time.start.time_since_epoch().count() && stats.time.finish.time_since_epoch().count() &&
-      stats.time.finish >= stats.time.start) {
-    auto us = std::chrono::duration_cast<std::chrono::microseconds>(stats.time.finish - stats.time.start).count();
+  if (stats.time.start.load().time_since_epoch().count() && stats.time.finish.load().time_since_epoch().count() &&
+      stats.time.finish.load() >= stats.time.start.load()) {
+    auto us = std::chrono::duration_cast<std::chrono::microseconds>(stats.time.finish.load() - stats.time.start.load())
+                  .count();
     time_ms = static_cast<float>(us / 1000.0);
   }
 

@@ -6,13 +6,24 @@
 
 namespace dpc::log {
 
-enum class LogLevel : int { Trace, Debug, Info, Warn };
+enum LogLevel : int { Trace, Debug, Info, Warn };
 
 namespace detail {
-inline const LogLevel level = [] {
+// inline const LogLevel level = [] {
+//   auto *v = std::getenv("DPC_LOG_LEVEL");
+//   if (!v) v = std::getenv("DPC_LOG");
+//   if (!v) return LogLevel::Info;
+//   std::string_view s(v);
+//   if (s == "trace") return LogLevel::Trace;
+//   if (s == "debug") return LogLevel::Debug;
+//   if (s == "warn") return LogLevel::Warn;
+//   return LogLevel::Info;
+// }();
+inline LogLevel current_level = [] {
   auto *v = std::getenv("DPC_LOG_LEVEL");
   if (!v) v = std::getenv("DPC_LOG");
   if (!v) return LogLevel::Info;
+
   std::string_view s(v);
   if (s == "trace") return LogLevel::Trace;
   if (s == "debug") return LogLevel::Debug;
@@ -20,11 +31,20 @@ inline const LogLevel level = [] {
   return LogLevel::Info;
 }();
 } // namespace detail
+
+inline LogLevel level() { return detail::current_level; }
+
+// The Setter: Explicit mechanism to change the level from code.
+inline LogLevel level(LogLevel new_level) {
+  detail::current_level = new_level;
+  return new_level;
+}
+
 } // namespace dpc::log
 
 #define DPC_LOG(lvl, tag, fstr, ...)                                                                                   \
   do {                                                                                                                 \
-    if (lvl >= dpc::log::detail::level) {                                                                              \
+    if (lvl >= dpc::log::level()) {                                                                                    \
       if (lvl <= dpc::log::LogLevel::Debug)                                                                            \
         fmt::println(stderr, "{} {}:{}: " fstr, tag, __FILE_NAME__, __LINE__ __VA_OPT__(, ) __VA_ARGS__);              \
       else fmt::println(stderr, "{} " fstr, tag __VA_OPT__(, ) __VA_ARGS__);                                           \

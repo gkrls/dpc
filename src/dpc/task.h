@@ -55,10 +55,10 @@ public:
 
   struct Stats {
     struct {
-      std::chrono::steady_clock::time_point create;
-      std::chrono::steady_clock::time_point submit;
-      std::chrono::steady_clock::time_point start;
-      std::chrono::steady_clock::time_point finish;
+      std::atomic<std::chrono::steady_clock::time_point> create;
+      std::atomic<std::chrono::steady_clock::time_point> submit;
+      std::atomic<std::chrono::steady_clock::time_point> start;
+      std::atomic<std::chrono::steady_clock::time_point> finish;
     } time;
     // struct {
     //   std::atomic<int> threads{0};
@@ -113,7 +113,7 @@ public:
   bool isReduceScatter() const { return coll == Collective::ReduceScatter; }
   bool isQuantized() const { return opt.quantization > 0; }
 
-  // --- accessors --- 
+  // --- accessors ---
   std::string const &toString() const;
   Status getStatus() const { return status; }
   std::string_view getStatusString() const;

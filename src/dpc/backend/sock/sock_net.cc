@@ -7,8 +7,8 @@
 namespace dpc {
 
 SockNet::SockNet(uint16_t tid, SockConfig &conf, DeviceConfig &dev, size_t max_packet_size)
-    : tid(tid), port(conf.port + tid), tx_burst(conf.tx_burst), tx_attempts(conf.tx_attempts), tx_interval(conf.tx_interval_us),
-      rx_burst(conf.rx_burst), rx_interval(conf.rx_interval_us) {
+    : tid(tid), port(conf.port + tid), tx_burst(conf.tx_burst), tx_attempts(conf.tx_attempts),
+      tx_interval(conf.tx_interval_us), rx_burst(conf.rx_burst), rx_interval(conf.rx_interval_us) {
 
   // TX setup. iov_len defaults to max; txEnqueue overrides per call.
   tx_msg.resize(tx_burst);
@@ -132,4 +132,4 @@ int SockNet::rx_drain() {
   return total;
 }
 
-} // namespace dpc::sock
+} // namespace dpc

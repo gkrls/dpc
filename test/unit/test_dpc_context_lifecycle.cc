@@ -56,12 +56,6 @@ TEST_CASE("context: implicit conversion to uint32_t returns id") {
   CHECK(id_via_conv == ctx->id);
 }
 
-
-
-
-
-
-
 TEST_CASE("context: reaches Running after construction") {
   auto ctx = MakeContext();
   CHECK(ctx->isRunning());
@@ -96,4 +90,30 @@ TEST_CASE("context: backend and device accessible") {
   auto ctx = MakeContext();
   CHECK(ctx->backend().is(Backend::Noop));
   CHECK(ctx->backend().state() == Backend::Running);
+}
+
+TEST_CASE("Context: submit racing with destruction reaches terminal") {
+  for (int trial = 0; trial < 50; ++trial) {
+    std::vector<std::shared_ptr<Task>> tasks;
+    std::mutex tasks_mtx;
+    std::atomic<bool> stop{false};
+
+    auto ctx = std::make_unique<Context>(0, 1, NoopConfig(1, 2));
+    std::vector<uint32_t> data(64);
+
+    std::thread submitter([&] {
+      while (!stop.load()) {
+        auto t = ctx->AllReduceAsync(data.data(), data.data(), data.size(), DataType::U32);
+        std::lock_guard<std::mutex> lock(tasks_mtx);
+        tasks.push_back(t);
+      }
+    });
+
+    std::this_thread::sleep_for(std::chrono::microseconds(trial * 100));
+    stop.store(true);
+    submitter.join();
+    ctx.reset();
+
+    for (auto &t : tasks) CHECK(t->isFinished());
+  }
 }

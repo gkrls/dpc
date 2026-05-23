@@ -21,13 +21,13 @@ using namespace std::chrono_literals;
 // helpers
 // ---------------------------------------------------------------------------
 
-using Worker = dpc::BackendWorker;
+// using Worker = dpc::BackendWorker;
 
 namespace {
 
 // A worker we can drive from tests. execute() is a counter by default, but
 // can be made to block on an external cv via set_blocking().
-class TestWorker : public Worker {
+class TestWorker : public BackendWorker {
 public:
   explicit TestWorker(uint16_t tid = 0) : Worker(tid) {}
   ~TestWorker() { stop(true); }
