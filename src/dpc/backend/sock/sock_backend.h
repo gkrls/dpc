@@ -4,7 +4,6 @@
 
 #include "dpc/backend/backend.h"
 #include "dpc/device.h"
-#include "dpc/util/config.h"
 
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -13,7 +12,7 @@ namespace dpc {
 
 class SockConfig : public BackendConfig {
 public:
-  std::string iface = "eth0";
+  std::string iface = "";
   std::string addr = "";
   uint16_t port = 4242;
   uint16_t threads = 1;
@@ -25,56 +24,18 @@ public:
   uint16_t rx_burst = 1;
   uint64_t rx_interval_us = 1;
 
-public:
   SockConfig() : BackendConfig(Backend::Sock){};
-  static SockConfig fromJson(const std::string &path) {
-    nlohmann::json root = conf::load_json(path);
-    SockConfig c;
-#define R(f) conf::read_if_present(c.f, root, "/sock/" #f)
-    R(iface);
-    R(addr);
-    R(port);
-    R(threads);
-    R(window);
-    R(timeout_us);
-    R(tx_burst);
-    R(tx_attempts);
-    R(tx_interval_us);
-    R(rx_burst);
-    R(rx_interval_us);
-#undef R
-    return c;
-  }
+  static SockConfig fromJson(const std::string &path);
 };
 
-class SockWorker;
-
-class SockBackend : public Backend {
-public:
-  class Net;
-  SockBackend(Context &ctx, SockConfig const &conf = {});
-  virtual ~SockBackend() override;
-  virtual const SockConfig &config() const override { return conf; }
-  virtual void print(bool details) const override;
-  virtual void start() override;
-  virtual void stop() override;
-  virtual void push(std::shared_ptr<Task> task) override;
-
-private:
-  struct TaskState { uint16_t remaining = 1; Task::Status worst = Task::Completed; };
-
-  SockConfig conf;
-  std::mutex work_mutex;
-  std::unordered_map<Task::id_t, TaskState> work;
-  std::vector<std::unique_ptr<SockWorker>> workers;
-};
+class SockBackend;
 
 class SockNet {
 public:
   using time_point = std::chrono::steady_clock::time_point;
 
   SockNet() = delete;
-  SockNet(uint16_t tid, SockConfig &conf, DeviceConfig &dev, size_t max_packet_size);
+  SockNet(uint16_t tid, const SockConfig &conf, const DeviceConfig &dev, size_t mtu = 1500);
   ~SockNet();
 
   void shutdown();
@@ -100,12 +61,12 @@ public:
   void *rx_packet(size_t i) { return rx_iov[i].iov_base; }
 
 private:
-  const int tid = -1;
-  const int max_packet_size = -1;
+  const uint16_t tid = 0;
+  const uint16_t mtu = 0;
   const uint16_t port = 0;
   int soc = -1;
-  struct sockaddr_in s_addr;
-  struct sockaddr_in d_addr;
+  struct sockaddr_in s_addr {};
+  struct sockaddr_in d_addr {};
 
   // TX
   time_point tx_ts;
@@ -125,7 +86,29 @@ private:
   time_point rx_ts;
 };
 
-class SockWorker : public BackendWorker {};
+class SockWorker : public BackendWorker {
+public:
+  SockWorker(uint16_t id, SockBackend &backend, const SockConfig &conf);
+  ~SockWorker() override { stop(true); }
+
+protected:
+  Task::Status execute(std::shared_ptr<Task> task) override;
+
+private:
+  SockNet net_;
+  SockConfig conf_;
+};
+
+class SockBackend : public MultiworkerBackend {
+public:
+  SockBackend(Context &ctx, const SockConfig &conf = {});
+  const SockConfig &config() const override { return conf_; }
+
+  void print(bool details) const override;
+
+private:
+  SockConfig conf_;
+};
 
 } // namespace dpc
 

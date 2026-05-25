@@ -1,6 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "doctest/doctest.h"
-#include "dpc/util/net_addr.h"
+#include "dpc/util/net.h"
 
 using namespace dpc::net;
 

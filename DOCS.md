@@ -18,3 +18,4 @@
 | `DPC_TIMEOUT`                   | Panic if collective not finished within that amount of ms | int >= `0` | `30000` |
 | `DPC_IFACE`                     | Interface to use. Error if not found or no bound IPv4. If no `DPC_ADDR` pick first IPv4 or error |   | `""` (auto) |
 | `DPC_ADDR`                      | IPv4 address to use. Must be bound to `DPC_IFACE` if set. Error if not found | | `""` (auto) |
+| `DPC_PORT`                      | Port to use for the socket backend. | int >= `0` | `4242` (default) |

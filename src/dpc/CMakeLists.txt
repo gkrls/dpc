@@ -56,9 +56,9 @@ set(DPC_SOURCES
   backend/noop/noop_backend.cc
   backend/sock/sock_backend.cc
   backend/sock/sock_net.cc
+  backend/sock/sock_worker.cc
   backend/backend.cc
-  util/net_addr.cc
-  util/net_iface.cc
+  util/net.cc
   context.cc
   device.cc
   dpc.cc

@@ -11,7 +11,6 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
-#include <stdexcept>
 
 using namespace dpc;
 

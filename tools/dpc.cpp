@@ -1,4 +1,5 @@
 #include "dpc/backend/noop/noop_backend.h"
+#include "dpc/backend/sock/sock_backend.h"
 #include "dpc/context.h"
 #include "dpc/device.h"
 #include "dpc/task.h"
@@ -7,7 +8,7 @@ int main(int, char**) {
 
   dpc::NoopConfig cfg(1000, 2);
 
-  dpc::Context ctx(0, 10, dpc::DeviceConfig::GenericTofino1, cfg);
+  dpc::Context ctx(0, 10, dpc::DeviceConfig::GenericTofino1, dpc::SockConfig{});
 
   std::vector<uint32_t> data(1024);
 

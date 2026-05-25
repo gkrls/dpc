@@ -6,8 +6,8 @@
 
 namespace dpc {
 
-SockNet::SockNet(uint16_t tid, SockConfig &conf, DeviceConfig &dev, size_t max_packet_size)
-    : tid(tid), port(conf.port + tid), tx_burst(conf.tx_burst), tx_attempts(conf.tx_attempts),
+SockNet::SockNet(uint16_t tid, const SockConfig &conf, const DeviceConfig &dev, size_t mtu)
+    : tid(tid), mtu(mtu), port(conf.port + tid), tx_burst(conf.tx_burst), tx_attempts(conf.tx_attempts),
       tx_interval(conf.tx_interval_us), rx_burst(conf.rx_burst), rx_interval(conf.rx_interval_us) {
 
   // TX setup. iov_len defaults to max; txEnqueue overrides per call.
@@ -15,7 +15,7 @@ SockNet::SockNet(uint16_t tid, SockConfig &conf, DeviceConfig &dev, size_t max_p
   tx_iov.resize(tx_burst);
   for (size_t i = 0; i < tx_burst; ++i) {
     tx_iov[i].iov_base = nullptr;
-    tx_iov[i].iov_len = max_packet_size;
+    tx_iov[i].iov_len = mtu; // this is rewritten by txEnqueue anyway
     std::memset(&tx_msg[i], 0, sizeof(mmsghdr));
     tx_msg[i].msg_hdr.msg_iov = &tx_iov[i];
     tx_msg[i].msg_hdr.msg_iovlen = 1;
@@ -25,11 +25,11 @@ SockNet::SockNet(uint16_t tid, SockConfig &conf, DeviceConfig &dev, size_t max_p
   // RX setup. One owned buffer per slot, sized to max packet.
   rx_msg.resize(rx_burst);
   rx_iov.resize(rx_burst);
-  rx_buf.resize(rx_burst * max_packet_size);
+  rx_buf.resize(rx_burst * mtu);
   for (size_t i = 0; i < rx_burst; ++i) {
     std::memset(&rx_msg[i], 0, sizeof(mmsghdr));
-    rx_iov[i].iov_base = &rx_buf[i * max_packet_size];
-    rx_iov[i].iov_len = max_packet_size;
+    rx_iov[i].iov_base = &rx_buf[i * mtu];
+    rx_iov[i].iov_len = mtu;
     rx_msg[i].msg_hdr.msg_iov = &rx_iov[i];
     rx_msg[i].msg_hdr.msg_iovlen = 1;
   }
@@ -42,8 +42,8 @@ SockNet::SockNet(uint16_t tid, SockConfig &conf, DeviceConfig &dev, size_t max_p
 
   // Buffer sizing. Kernel doubles whatever we pass and caps at rmem_max/wmem_max.
   // Read back and warn if capped.
-  int want_snd = static_cast<int>(max_packet_size * tx_burst * 4);
-  int want_rcv = static_cast<int>(max_packet_size * rx_burst * 4);
+  int want_snd = static_cast<int>(mtu * tx_burst * 4);
+  int want_rcv = static_cast<int>(mtu * rx_burst * 4);
   setsockopt(soc, SOL_SOCKET, SO_SNDBUF, &want_snd, sizeof(want_snd));
   setsockopt(soc, SOL_SOCKET, SO_RCVBUF, &want_rcv, sizeof(want_rcv));
   int got_snd = 0, got_rcv = 0;

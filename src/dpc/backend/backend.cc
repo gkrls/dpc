@@ -2,6 +2,7 @@
 
 #include "dpc/backend/noop/noop_backend.h"
 #include "dpc/backend/sock/sock_backend.h"
+#include "dpc/util/config.h"
 
 #include <string_view>
 #if DPC_DPDK_ENABLED
@@ -9,13 +10,10 @@
 #endif
 #include "dpc/util/error.h"
 
-#include "nlohmann/json.hpp"
 
 #include <memory>
 
 using namespace dpc;
-
-using nlohmann::json;
 
 // ============= BACKEND REGISTRATION =============
 const std::vector<Backend::Entry> Backend::registry = {
@@ -28,7 +26,7 @@ const std::vector<Backend::Entry> Backend::registry = {
 // ============= BACKEND REGISTRATION =============
 
 std::unique_ptr<BackendConfig> BackendConfig::fromJson(const std::string &path) {
-  auto data = conf::load_json(path);
+  auto data = conf::json_load(path);
   if (!data.is_object()) DPC_ERROR("config {} must be a json object", path);
 
   for (auto it = data.begin(); it != data.end(); ++it) {
@@ -40,7 +38,7 @@ std::unique_ptr<BackendConfig> BackendConfig::fromJson(const std::string &path) 
 }
 
 std::unique_ptr<BackendConfig> BackendConfig::fromJson(const std::string &path, Backend::Kind kind) {
-  auto data = conf::load_json(path);
+  auto data = conf::json_load(path);
   if (!data.is_object()) DPC_ERROR("config {} must be a json object", path);
   for (auto &e : Backend::registry) {
     if (e.kind != kind) continue;

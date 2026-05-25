@@ -2,6 +2,8 @@
 
 #include "dpc/backend/backend.h"
 #include "dpc/backend/noop/noop_backend.h"
+
+#include <mutex>
 #if DPC_DPDK_ENABLED
 #include "dpc/backend/dpdk/dpdk_backend.h"
 #endif
@@ -102,10 +104,16 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendC
   this->scheduler_ = kScheduler != "off" ? create_scheduler(*this, kScheduler) : nullptr;
   this->timeout = std::chrono::milliseconds(kTimeout.value_or(timeout));
 
-  DPC_ERROR_IF(!this->backend_, "failed to create backend '{}'", Backend::name(bc.kind_)); // options().name);
-  // if (kScheduler.has_value()) this->scheduler_ = create_scheduler(*this, *kScheduler);
-  // if (kTimeout.has_value()) this->timeout = std::chrono::milliseconds(*kTimeout);
-  // PrintContextInfo(*this);
+  DPC_ERROR_IF(!this->backend_, "failed to create backend '{}'",
+               Backend::name(bc.kind_)); // options().name);
+
+  static std::once_flag flag;
+  std::call_once(flag, [] {
+    auto trace = fmt::format("{}", DPC_TRACE_ENABLED ? " on" : "off");
+    auto simd = fmt::format("{}", DPC_AVX512_AVAILABLE ? "avx512" : DPC_AVX2_AVAILABLE ? "avx2" : "off");
+    fmt::println("dpc v{}-{} simd={} trace={}\n", DPC_VERSION_STRING, DPC_BUILD_TYPE, simd, trace);
+  });
+
   print();
   start();
 }
@@ -115,16 +123,16 @@ Context::~Context() {
   live_contexts.fetch_sub(1);
 }
 
+static void print_build_info() {}
+
 void Context::print() {
-  // DPC_INFO("{}", std::string(100, '='));
-  DPC_INFO("CTX: rank={} world={} scheduler={} watchdog={} (build {} {})", rank, world, hasScheduler() ? "on" : "off",
-           this->timeout.count() ? fmt::format("{}ms", this->timeout.count()) : "off", DPC_BUILD_TYPE,
-           DPC_AVX512_AVAILABLE ? "avx512"
-           : DPC_AVX2_AVAILABLE ? "avx2"
-                                : "no-simd");
-  device().print(true);
+  print_build_info();
+
+  DPC_INFO("context: rank={} world={} device={} backend={} scheduler={} watchdog={}", rank, world, device().name(),
+           backend().name(), hasScheduler() ? "on" : "off",
+           this->timeout.count() ? fmt::format("{:.3g}s", static_cast<double>(this->timeout.count()) / 1000.0) : "off");
   backend().print(true);
-  // DPC_INFO("{}", std::string(100, '='));
+  device().print(true);
 }
 
 void Context::start() {
@@ -263,10 +271,11 @@ void Context::watchdog() {
         if (task->isRunning()) {
           auto duration = now - task->stats.time.start.load();
           if (duration > timeout) {
-            DPC_FATAL("watchdog: task {} did not finish within {} ms", task->name,
+            DPC_FATAL("watchdog: task {} did not finish within {} ms. Aborting...", task->name,
                       std::chrono::duration_cast<std::chrono::milliseconds>(duration).count(), timeout.count());
             // DPC_FATAL("watchdog: task {} timed out ({}ms > {}ms)", task->name,
-            //           std::chrono::duration_cast<std::chrono::milliseconds>(duration).count(), timeout.count());
+            //           std::chrono::duration_cast<std::chrono::milliseconds>(duration).count(),
+            //           timeout.count());
           }
         }
       }
@@ -277,13 +286,16 @@ void Context::watchdog() {
     //   auto now = std::chrono::steady_clock::now();
     //   // DPC_DEBUG("watchdog poll: {} tasks tracked", tracking_tasks.size());
     //   for (auto &[id, task] : tracking_tasks) {
-    //     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - task->stats.time.start).count();
-    //     // DPC_DEBUG("  task {} status={} running={} elapsed={}ms", task->name, task->getStatusString(),
+    //     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now -
+    //     task->stats.time.start).count();
+    //     // DPC_DEBUG("  task {} status={} running={} elapsed={}ms", task->name,
+    //     task->getStatusString(),
     //     // task->isRunning(),
     //     //           elapsed);
     //     if (task->isRunning() && (now - task->stats.time.start) > timeout) {
     //       DPC_FATAL("watchdog: task {} did not finish in {}ms", task->name,
-    //                 std::chrono::duration_cast<std::chrono::milliseconds>(now - task->stats.time.start).count());
+    //                 std::chrono::duration_cast<std::chrono::milliseconds>(now -
+    //                 task->stats.time.start).count());
     //     }
     //   }
     // }

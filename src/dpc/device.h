@@ -35,10 +35,8 @@ struct DeviceConfig {
   } controller {};
   struct SessionConfig {
     uint32_t id = 1;
-    struct PoolConfig {
-      uint32_t base = 0;
-      uint32_t size = 2;
-    } pool;
+    uint32_t pool_base = 0;
+    uint32_t pool_size = 2;
     float dropsimIngress = 0; // %
     float dropsimEgress = 0;  // %
   } session {};
@@ -66,10 +64,8 @@ inline const DeviceConfig DeviceConfig::GenericTofino1 {
   .slots = 32768,
   .session = {
     .id = 1,
-    .pool = {
-      .base = 0,
-      .size = 2
-    },
+    .pool_base = 0,
+    .pool_size = 2,
     .dropsimIngress = 0,
     .dropsimEgress = 0
   },
@@ -87,10 +83,8 @@ inline const DeviceConfig DeviceConfig::GenericTofino2 {
   .slots = 32768,
   .session = {
     .id = 1,
-    .pool = {
-      .base = 0,
-      .size = 2
-    },
+    .pool_base = 0,
+    .pool_size = 2,
     .dropsimIngress = 0,
     .dropsimEgress = 0
   },
@@ -99,10 +93,11 @@ inline const DeviceConfig DeviceConfig::GenericTofino2 {
 
 class Device {
 public:
-  Device(DeviceConfig const& o);
+  Device(DeviceConfig const& conf);
   DeviceConfig const conf;
   DeviceConfig const &config() { return conf; }
   void print(bool detail);
+  std::string name() const { return conf.name; }
 };
 
 } // namespace dpc

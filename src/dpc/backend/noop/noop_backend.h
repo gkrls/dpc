@@ -2,7 +2,6 @@
 #define DPC_BACKEND_NULL
 
 #include "dpc/backend/backend.h"
-// #include "dpc/backend/worker.h"
 #include "dpc/context.h"
 #include "dpc/util/log.h"
 
@@ -49,16 +48,13 @@ public:
 protected:
   Task::Status execute(std::shared_ptr<Task> task) override {
     DPC_TRACE("{}-t{}: Running task {}", backend_.name(), id(), task->name);
-    if (backend_.conf.op_ms) std::this_thread::sleep_for(std::chrono::milliseconds(backend_.conf.op_ms));
+    if (conf_.op_ms) std::this_thread::sleep_for(std::chrono::milliseconds(backend_.conf.op_ms));
     return Task::Completed;
   }
 
-  // void on_task_start(std::shared_ptr<Task> task) override { backend_.notify(id(), task, Task::Running); }
-  // void on_task_finish(std::shared_ptr<Task> task, Task::Status status) override { backend_.notify(id(), task, status); }
-  // void on_task_abort(std::shared_ptr<Task> task) override { backend_.notify(id(), task, Task::Aborted); }
-
 private:
   NoopBackend &backend_;
+  NoopConfig conf_;
 };
 
 } // namespace dpc

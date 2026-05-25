@@ -1,36 +1,54 @@
 #include "dpc/backend/sock/sock_backend.h"
 
+#include "dpc/util/config.h"
+#include "dpc/util/env.h"
+
 using namespace dpc;
 
-SockBackend::SockBackend(Context &ctx, const SockConfig &conf) : Backend(ctx, Backend::Sock) {
-  // TODO
+SockConfig SockConfig::fromJson(const std::string &path) {
+  nlohmann::json j = conf::json_load_ensure_key(path, "sock");
+  SockConfig c;
+  OPT(j, c, iface);
+  OPT(j, c, addr);
+  OPT(j, c, port);
+  OPT(j, c, threads);
+  OPT(j, c, window);
+  OPT(j, c, timeout_us);
+  OPT(j, c, tx_burst);
+  OPT(j, c, tx_attempts);
+  OPT(j, c, tx_interval_us);
+  OPT(j, c, rx_burst);
+  OPT(j, c, rx_interval_us);
+
+  // Environment variables override JSON values
+  static const auto eIface = env::getstr({"DPC_IFACE"});
+  static const auto eAddr = env::getstr({"DPC_ADDR"});
+  static const auto ePort = env::getstr({"DPC_PORT"});
+
+  if (eIface.has_value()) c.iface = eIface.value();
+  if (eAddr.has_value()) c.addr = eAddr.value();
+  if (ePort.has_value()) c.port = std::stoi(ePort.value());
+
+  return c;
 }
 
-SockBackend::~SockBackend() {
-  // TODO
-}
+namespace {
 
-void SockBackend::start() {
-  // TODO
-}
+const auto kAddr = env::getstr({"DPC_ADDR"});
+const auto kPort = env::getstr({"DPC_PORT"});
+const auto kIface = env::getstr({"DPC_IFACE"});
 
-void SockBackend::stop() {
-  // TODO
-};
+}; // namespace
 
-void SockBackend::push(std::shared_ptr<Task> task) {
-  DPC_CHECK(state_ == Running, "backend is not in Running state. Make sure start() is called before push()");
-  DPC_CHECK(task->getStatus() == Task::Created, "task {} already submitted to backend", task->name);
-  {
-    std::lock_guard<std::mutex> lock(work_mutex);
-    auto [it, inserted] = work.try_emplace(task->id, TaskState{conf.threads, Task::Completed});
-    DPC_CHECK(inserted, "attempted to push task {} more than once", task->name);
+SockBackend::SockBackend(Context &ctx, const SockConfig &conf) : MultiworkerBackend(ctx, Backend::Sock), conf_(conf) {
+  if (conf_.iface.empty() and conf_.addr.empty()) {
+    // conf_.iface = net::get_default_iface();
   }
-  task->setStatus(Task::Submitted);
-  for (auto &worker : workers) worker->push(task);
+
+
+  for (auto i = 0; i < conf_.threads; ++i) workers.push_back(std::make_unique<SockWorker>(1, *this, conf));
 }
 
 void SockBackend::print(bool details) const {
-  // TODO
+  DPC_INFO("backend: {}, addr={}:{} workers={}", name(), conf_.addr, conf_.port, conf_.threads);
 }
-
