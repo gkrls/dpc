@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <linux/ethtool.h>
 #include <linux/sockios.h>
+#include <stdexcept>
 #include <string>
 #include <sys/ioctl.h>
 #include <unistd.h>
@@ -184,6 +185,36 @@ std::string ipv4_for_iface(const std::string &ifname) {
   return result;
 }
 
+std::vector<std::string> ipv4s_for_iface(const std::string &ifname) {
+  std::vector<std::string> out;
+  struct ifaddrs *ifa_list = nullptr;
+  if (getifaddrs(&ifa_list) != 0) return out;
+  for (auto *ifa = ifa_list; ifa; ifa = ifa->ifa_next) {
+    if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+    if (ifname != ifa->ifa_name) continue;
+    char buf[INET_ADDRSTRLEN] = {};
+    auto *sin = reinterpret_cast<struct sockaddr_in *>(ifa->ifa_addr);
+    if (inet_ntop(AF_INET, &sin->sin_addr, buf, sizeof(buf))) out.emplace_back(buf);
+  }
+  freeifaddrs(ifa_list);
+  return out;
+}
+
+// std::string ipv4_for_iface(const std::string &ifname) {
+//   struct ifaddrs *ifa_list = nullptr;
+//   if (getifaddrs(&ifa_list) != 0) return "";
+//   std::string result;
+//   for (auto *ifa = ifa_list; ifa; ifa = ifa->ifa_next) {
+//     if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+//     if (ifname != ifa->ifa_name) continue;
+//     char buf[INET_ADDRSTRLEN] = {};
+//     auto *sin = reinterpret_cast<struct sockaddr_in *>(ifa->ifa_addr);
+//     if (inet_ntop(AF_INET, &sin->sin_addr, buf, sizeof(buf))) { result = buf; break; }
+//   }
+//   freeifaddrs(ifa_list);
+//   return result;
+// }
+
 std::string iface_for_ipv4(const std::string &ip_str, bool require_up, bool allow_loopback) {
   in_addr want{};
   if (inet_pton(AF_INET, ip_str.c_str(), &want) != 1) return "";
@@ -265,6 +296,114 @@ void print_ifaces(bool require_up, bool allow_loopback, bool allow_virtual) {
     printf("  %-16s %-16s %7u Mb  %-14s %s\n", i.name.c_str(), i.ipv4.empty() ? "-" : i.ipv4.c_str(), i.speed_mbps,
            i.driver.empty() ? "-" : i.driver.c_str(), i.pci_addr.empty() ? "-" : i.pci_addr.c_str());
   }
+}
+
+// Resolves (iface, addr) from possibly-empty inputs. Throws on any
+// ambiguous, invalid, or unsatisfiable configuration.
+//
+// Priority: user input is always respected when given. We only ever fill in
+// values the user left empty; we never override what the user provided.
+//
+// Cases (by which of {iface, addr} the user provided):
+//
+//   1. BOTH given
+//      Validate that `addr` is actually bound to `iface`. Reject otherwise.
+//
+//   2. IFACE only
+//      Look up all IPv4 addresses on the iface.
+//        0 addrs  -> error (nothing to bind to; iface may be down or unconfigured)
+//        1 addr   -> use it
+//        N addrs  -> error, list them and require disambiguation.
+//      Rationale: multiple IPs on one iface usually means aliases, VIPs, or
+//      multi-subnet setups. Kernel enumeration order is not meaningful, so
+//      picking "the first" is a coin flip with real failure modes (binding
+//      to a passive VIP, wrong subnet, etc.).
+//
+//   3. ADDR only
+//      Find the iface that owns the addr. Loopback is allowed here because
+//      the user was explicit.
+//        0 ifaces -> error
+//
+//   4. NEITHER given (auto-select)
+//      Enumerate candidates via list_ifaces_with_ipv4(up=true, loopback=false,
+//      virtual=false) — i.e. real, up, IP-bearing physical interfaces.
+//        0 candidates -> error
+//        1 candidate  -> use it
+//        N candidates -> pick UNIQUE fastest by link speed (list_ifaces sorts
+//                        desc by speed). If the top speed is tied across
+//                        multiple ifaces, error and list candidates.
+//      Rationale: on the target deployment (HPC/datacenter), the data NIC is
+//      typically 10-100x faster than the mgmt NIC (e.g. 100 GbE vs 1 GbE),
+//      so "unique max speed" is both safe and almost always decisive. When
+//      it isn't decisive (genuinely symmetric multi-NIC hosts), guessing is
+//      dangerous, so we refuse and let the operator pick via env/config.
+std::pair<std::string, std::string> resolve_endpoint(const std::string &want_iface, const std::string &want_addr) {
+  // --- Case 1: both given ---------------------------------------------------
+  if (!want_iface.empty() && !want_addr.empty()) {
+    if (!iface_exists(want_iface)) throw std::runtime_error("iface '" + want_iface + "' does not exist");
+    if (!ipv4_check(want_addr)) throw std::runtime_error("invalid IPv4 address: " + want_addr);
+
+    auto ips = ipv4s_for_iface(want_iface);
+    if (std::find(ips.begin(), ips.end(), want_addr) == ips.end()) {
+      std::string have;
+      for (size_t i = 0; i < ips.size(); ++i) {
+        if (i) have += ", ";
+        have += ips[i];
+      }
+      throw std::runtime_error("addr " + want_addr + " is not on iface " + want_iface +
+                               " (iface has: " + (have.empty() ? "none" : have) + ")");
+    }
+    return {want_iface, want_addr};
+  }
+
+  // --- Case 2: iface only ---------------------------------------------------
+  if (!want_iface.empty()) {
+    if (!iface_exists(want_iface)) throw std::runtime_error("iface '" + want_iface + "' does not exist");
+
+    auto ips = ipv4s_for_iface(want_iface);
+    if (ips.empty()) throw std::runtime_error("iface '" + want_iface + "' has no IPv4 address");
+    if (ips.size() > 1) {
+      std::string list;
+      for (size_t i = 0; i < ips.size(); ++i) {
+        if (i) list += ", ";
+        list += ips[i];
+      }
+      throw std::runtime_error("iface '" + want_iface + "' has multiple IPv4 addresses (" + list +
+                               "); specify one explicitly");
+    }
+    return {want_iface, ips[0]};
+  }
+
+  // --- Case 3: addr only ----------------------------------------------------
+  if (!want_addr.empty()) {
+    if (!ipv4_check(want_addr)) throw std::runtime_error("invalid IPv4 address: " + want_addr);
+    // Loopback allowed: user was explicit.
+    std::string name = iface_for_ipv4(want_addr, /*require_up=*/true, /*allow_loopback=*/true);
+    if (name.empty()) throw std::runtime_error("no interface owns address " + want_addr);
+    return {name, want_addr};
+  }
+
+  // --- Case 4: neither given — auto-select ---------------------------------
+  auto candidates = list_ifaces_with_ipv4(/*require_up=*/true, /*allow_loopback=*/false, /*allow_virtual=*/false);
+  if (candidates.empty())
+    throw std::runtime_error("no usable network interface found; "
+                             "specify iface or addr explicitly");
+  if (candidates.size() == 1) return {candidates[0].name, candidates[0].ipv4};
+
+  // list_ifaces sorts desc by speed_mbps. Top is unique iff exactly one
+  // candidate has speed == candidates[0].speed_mbps.
+  uint32_t top = candidates[0].speed_mbps;
+  int tied = 0;
+  for (auto &c : candidates)
+    if (c.speed_mbps == top) ++tied;
+  if (tied == 1) return {candidates[0].name, candidates[0].ipv4};
+
+  std::string list;
+  for (auto &c : candidates) { list += "\n  " + c.name + " " + c.ipv4 + " " + std::to_string(c.speed_mbps) + " Mb/s"; }
+  throw std::runtime_error("multiple interfaces tied at top speed (" + std::to_string(top) +
+                           " Mb/s); specify iface or addr explicitly. "
+                           "candidates:" +
+                           list);
 }
 
 } // namespace dpc::net

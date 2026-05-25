@@ -58,6 +58,7 @@ set(DPC_SOURCES
   backend/sock/sock_net.cc
   backend/sock/sock_worker.cc
   backend/backend.cc
+  util/cpu.cc
   util/net.cc
   context.cc
   device.cc
@@ -88,11 +89,11 @@ target_include_directories(dpc
 target_link_libraries(dpc PUBLIC fmt nlohmann_json::nlohmann_json)
 
 # SIMD
-if(DPA_AVX512_AVAILABLE)
-  target_compile_options(dpc PRIVATE -mavx512f -mavx512dq -mavx512bw -mavx2 -mfma)
-elseif(DPA_AVX2_AVAILABLE)
-  target_compile_options(dpc PRIVATE -mavx2 -mfma)
-endif()
+# if(DPA_AVX512_AVAILABLE)
+#   target_compile_options(dpc PRIVATE -mavx512f -mavx512dq -mavx512bw -mavx2 -mfma)
+# elseif(DPA_AVX2_AVAILABLE)
+#   target_compile_options(dpc PRIVATE -mavx2 -mfma)
+# endif()
 
 # DPDK
 if(DPC_DPDK)
@@ -137,7 +138,7 @@ file(GLOB_RECURSE DPA_HEADERS "*.h")
 foreach(HEADER ${DPA_HEADERS})
   file(RELATIVE_PATH REL_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${HEADER})
   get_filename_component(HEADER_DIR ${REL_PATH} DIRECTORY)
-  install(FILES ${HEADER} DESTINATION include/dpa/${HEADER_DIR})
+  install(FILES ${HEADER} DESTINATION include/dpc/${HEADER_DIR})
 endforeach()
 
 # add_library(dpc_objects OBJECT ${DPC_SOURCES})

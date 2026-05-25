@@ -47,9 +47,9 @@ add_executable(test_dpc_util_config test_dpc_util_config.cc)
 target_link_libraries(test_dpc_util_config PRIVATE doctest::doctest dpc)
 doctest_discover_tests(test_dpc_util_config TEST_PREFIX "util/config::")
 
-add_executable(test_dpc_util_net_addr test_dpc_util_net_addr.cc)
-target_link_libraries(test_dpc_util_net_addr PRIVATE doctest::doctest dpc)
-doctest_discover_tests(test_dpc_util_net_addr TEST_PREFIX "util/net_addr::")
+add_executable(test_dpc_util_net test_dpc_util_net.cc)
+target_link_libraries(test_dpc_util_net PRIVATE doctest::doctest dpc)
+doctest_discover_tests(test_dpc_util_net TEST_PREFIX "util/net::")
 
 add_executable(test_dpc_util_queue_mpsc test_dpc_util_queue_mpsc.cc)
 target_link_libraries(test_dpc_util_queue_mpsc PRIVATE doctest::doctest dpc)

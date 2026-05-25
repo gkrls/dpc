@@ -61,7 +61,7 @@ SockNet::SockNet(uint16_t tid, const SockConfig &conf, const DeviceConfig &dev, 
   // Bind local address
   std::memset(&s_addr, 0, sizeof(s_addr));
   s_addr.sin_family = AF_INET;
-  s_addr.sin_port = htons(port + tid);
+  s_addr.sin_port = htons(port);
   s_addr.sin_addr.s_addr = inet_addr(conf.addr.c_str());
   DPC_CHECK(bind(soc, (struct sockaddr *)&s_addr, sizeof(s_addr)) != -1, "t{}: bind {}:{}: {}", tid, conf.addr,
             ntohs(s_addr.sin_port), strerror(errno));

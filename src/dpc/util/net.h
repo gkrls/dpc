@@ -44,6 +44,12 @@ std::string iface_for_ipv4(const std::string &addr, bool require_up = true, bool
  */
 std::string ipv4_for_iface(const std::string &ifname);
 
+/**
+ * Returns all IPv4 addresses bound to `ifname`. Empty if the iface has no
+ * IPv4 or doesn't exist. Order matches kernel enumeration and is not stable.
+ */
+std::vector<std::string> ipv4s_for_iface(const std::string &ifname);
+
 struct iface_info_t {
   std::string name;
   std::string ipv4;     // empty if none
@@ -71,6 +77,11 @@ std::vector<iface_info_t> list_ifaces_with_ipv4(bool require_up = true, bool all
                                                 bool allow_virtual = false);
 
 void print_ifaces(bool require_up = true, bool allow_loopback = false, bool allow_virtual = false);
+
+std::pair<std::string, std::string> resolve_endpoint(const std::string &want_iface = "",
+                                                     const std::string &want_addr = "");
+
+std::pair<std::string, std::string> resolve_endpoint(const std::string &want_iface, const std::string &want_addr);
 
 } // namespace net
 } // namespace dpc

@@ -2,6 +2,7 @@
 
 #include "dpc/util/config.h"
 #include "dpc/util/env.h"
+#include "dpc/util/net.h"
 
 using namespace dpc;
 
@@ -21,13 +22,13 @@ SockConfig SockConfig::fromJson(const std::string &path) {
   OPT(j, c, rx_interval_us);
 
   // Environment variables override JSON values
-  static const auto eIface = env::getstr({"DPC_IFACE"});
-  static const auto eAddr = env::getstr({"DPC_ADDR"});
-  static const auto ePort = env::getstr({"DPC_PORT"});
+  static const auto e_iface = env::getstr({"DPC_IFACE"});
+  static const auto e_addr = env::getstr({"DPC_ADDR"});
+  static const auto e_port = env::getstr({"DPC_PORT"});
 
-  if (eIface.has_value()) c.iface = eIface.value();
-  if (eAddr.has_value()) c.addr = eAddr.value();
-  if (ePort.has_value()) c.port = std::stoi(ePort.value());
+  if (e_iface.has_value()) c.iface = e_iface.value();
+  if (e_addr.has_value()) c.addr = e_addr.value();
+  if (e_port.has_value()) c.port = std::stoi(e_port.value());
 
   return c;
 }
@@ -41,9 +42,9 @@ const auto kIface = env::getstr({"DPC_IFACE"});
 }; // namespace
 
 SockBackend::SockBackend(Context &ctx, const SockConfig &conf) : MultiworkerBackend(ctx, Backend::Sock), conf_(conf) {
-  if (conf_.iface.empty() and conf_.addr.empty()) {
-    // conf_.iface = net::get_default_iface();
-  }
+  auto [iface, addr] = net::resolve_endpoint(conf.iface, conf.addr);
+  conf_.iface = iface;
+  conf_.addr = addr;
 
 
   for (auto i = 0; i < conf_.threads; ++i) workers.push_back(std::make_unique<SockWorker>(1, *this, conf));

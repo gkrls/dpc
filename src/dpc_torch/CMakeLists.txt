@@ -218,19 +218,19 @@ endif()
 # ============================================================================
 # Run inside a venv with torch + DPDK bindings.
 # 1. check-pyvenv.py: abort if venv is wrong.
-# 2. cmake install: builds dpa and stages Gloo headers.
+# 2. cmake install: builds dpc and stages Gloo headers.
 # 3. rm stale wheels: avoids pip picking the wrong one on version bumps.
 # 4. pip wheel: setup.py produces the wheel.
 # 5. pip install: into the active venv.
 add_custom_target(torch-plugin
   COMMAND ${Python_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/check-pyvenv.py
   COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --target install
-  COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/lib/DPC-*.whl
+  COMMAND ${CMAKE_COMMAND} -E rm -f ${CMAKE_BINARY_DIR}/lib/dpc-*.whl
   COMMAND ${Python_EXECUTABLE} -m pip wheel --no-build-isolation --no-deps
   --wheel-dir ${CMAKE_BINARY_DIR}/lib
   ${CMAKE_CURRENT_SOURCE_DIR}
   COMMAND ${Python_EXECUTABLE} -m pip install --force-reinstall --no-deps
-  ${CMAKE_BINARY_DIR}/lib/DPC-*.whl
+  ${CMAKE_BINARY_DIR}/lib/dpc-*.whl
   USES_TERMINAL
   COMMENT "Building and installing DPC PyTorch plugin"
 )

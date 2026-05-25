@@ -8,7 +8,6 @@
 #ifndef __FILE_NAME__
 #define __FILE_NAME__ __FILE__
 #endif
-// auto fullfmt = fmt::format("dpc.assert {}:{}: {}", __FILE_NAME__, __LINE__, (fstr));
 
 #ifndef NDEBUG
 #define DPC_ASSERT(pred, fstr, ...)                                                                                    \

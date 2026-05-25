@@ -37,7 +37,7 @@ Device::Device(DeviceConfig const &conf) : conf(conf) {
 }
 
 void Device::print(bool detail) {
-  DPC_INFO("{}: addr={}/{} pipes={} reducers={}/{} slots={} sess={} pool={}-{}", conf.name, conf.addr, conf.port,
+  DPC_INFO("{}: addr={}:{} pipes={} reducers={}/{} slots={} sess={} pool={}-{}", conf.name, conf.addr, conf.port,
            conf.pipes, conf.reducers, conf.reducer_mode, conf.slots, conf.session.id, conf.session.pool_base,
            conf.session.pool_base + conf.session.pool_size);
 }
