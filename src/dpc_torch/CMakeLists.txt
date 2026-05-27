@@ -164,7 +164,7 @@ execute_process(COMMAND python -c "import sysconfig; print(sysconfig.get_path('i
   RESULT_VARIABLE PYTHON_RESULT
 )
 
-if(DPA_DEVELOP)
+if(DPC_DEVELOP)
   find_package(Python REQUIRED COMPONENTS Interpreter)
   find_package(CUDAToolkit REQUIRED)
 
@@ -199,9 +199,10 @@ if(DPA_DEVELOP)
     ${gloo_SOURCE_DIR}
     ${GLOO_CONFIG_DIR}
   )
-  target_link_libraries(dpc-torch-intellisense PUBLIC dpc_ob)
+  # target_link_libraries(dpc-torch-intellisense PUBLIC dpc_ob)
+  target_link_libraries(dpc-torch-intellisense PUBLIC dpc)
 
-  if(DPA_DPDK)
+  if(DPC_DPDK)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(DPDK REQUIRED IMPORTED_TARGET libdpdk)
 

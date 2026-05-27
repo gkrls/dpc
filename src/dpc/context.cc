@@ -326,7 +326,6 @@ Task::Status Context::AllReduce(void const *sendbuf, void *recvbuf, uint64_t cou
 
 std::shared_ptr<Task> Context::AllGatherAsync(void const *sendbuf, void *recvbuf, uint64_t sendcount, DataType type,
                                               CollectiveOptions const &opt) {
-
   return submit(Task::CreateAllGather(*this, true, sendbuf, recvbuf, sendcount, type, opt));
 }
 

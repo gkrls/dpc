@@ -2,6 +2,7 @@ import torch
 
 from ._C import (
     get_pinned_cores,
+    get_available_cores
 )
 
 def pin_away():
