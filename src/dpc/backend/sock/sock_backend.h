@@ -7,13 +7,12 @@
 
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <thread>
 
 namespace dpc {
 
 class SockConfig : public BackendConfig {
 public:
-  std::string iface = "";
-  std::string addr = "";
   uint16_t port = 4242;
   uint16_t threads = 1;
   uint16_t window = 64;
@@ -23,7 +22,9 @@ public:
   uint64_t tx_interval_us = 1;
   uint16_t rx_burst = 1;
   uint64_t rx_interval_us = 1;
-
+  std::string iface = "";
+  std::string addr = "";
+  bool pinned = true;
   SockConfig() : BackendConfig(Backend::Sock){};
   static SockConfig fromJson(const std::string &path);
 };
@@ -88,15 +89,20 @@ private:
 
 class SockWorker : public BackendWorker {
 public:
-  SockWorker(uint16_t id, SockBackend &backend, const SockConfig &conf);
-  ~SockWorker() override { stop(true); }
+  SockWorker(SockBackend &backend, uint16_t id, int pin_core = -1);
+  ~SockWorker();
 
 protected:
+  void run();
+  void join() override { if (thread_.joinable()) thread_.join(); }
   Task::Status execute(std::shared_ptr<Task> task) override;
 
 private:
-  SockNet net_;
+  SockBackend &backend_;
   SockConfig conf_;
+  SockNet net_;
+  int pin_core_ = -1;
+  std::thread thread_;
 };
 
 class SockBackend : public MultiworkerBackend {

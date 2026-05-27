@@ -43,7 +43,8 @@ private:
 class NoopWorker : public BackendWorker {
 public:
   // friend class NoopBackend;
-  NoopWorker(uint16_t tid, NoopBackend &backend) : BackendWorker(tid, backend), backend_(backend) {}
+  NoopWorker(uint16_t tid, NoopBackend &backend)
+      : BackendWorker(backend, tid), backend_(backend), conf_(backend_.conf), thread_(&NoopWorker::main, this) {}
 
 protected:
   Task::Status execute(std::shared_ptr<Task> task) override {
@@ -52,9 +53,16 @@ protected:
     return Task::Completed;
   }
 
+  void run() {}
+
+  void join() override {
+    if (thread_.joinable()) thread_.join();
+  }
+
 private:
   NoopBackend &backend_;
   NoopConfig conf_;
+  std::thread thread_;
 };
 
 } // namespace dpc

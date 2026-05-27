@@ -25,7 +25,7 @@ int get_numa_node_for_iface(const std::string &ifname);
 // Pin calling thread to a single core. Throws on failure.
 void pin_to_core(int core);
 
-// Pin worker thread to a single core. Throws on failure.
+// Pin worker thread to a single core in the numa node of the NIC. Throws on failure.
 void pin_worker(size_t tid, size_t n, const std::string &ifname = "");
 
 } // namespace dpc::cpu

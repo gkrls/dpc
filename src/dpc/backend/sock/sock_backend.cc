@@ -1,6 +1,7 @@
 #include "dpc/backend/sock/sock_backend.h"
 
 #include "dpc/util/config.h"
+#include "dpc/util/cpu.h"
 #include "dpc/util/env.h"
 #include "dpc/util/net.h"
 
@@ -20,36 +21,32 @@ SockConfig SockConfig::fromJson(const std::string &path) {
   OPT(j, c, tx_interval_us);
   OPT(j, c, rx_burst);
   OPT(j, c, rx_interval_us);
-
-  // Environment variables override JSON values
-  static const auto e_iface = env::getstr({"DPC_IFACE"});
-  static const auto e_addr = env::getstr({"DPC_ADDR"});
-  static const auto e_port = env::getstr({"DPC_PORT"});
-
-  if (e_iface.has_value()) c.iface = e_iface.value();
-  if (e_addr.has_value()) c.addr = e_addr.value();
-  if (e_port.has_value()) c.port = std::stoi(e_port.value());
-
   return c;
 }
 
-namespace {
-
-const auto kAddr = env::getstr({"DPC_ADDR"});
-const auto kPort = env::getstr({"DPC_PORT"});
-const auto kIface = env::getstr({"DPC_IFACE"});
-
-}; // namespace
-
 SockBackend::SockBackend(Context &ctx, const SockConfig &conf) : MultiworkerBackend(ctx, Backend::Sock), conf_(conf) {
-  auto [iface, addr] = net::resolve_endpoint(conf.iface, conf.addr);
-  conf_.iface = iface;
-  conf_.addr = addr;
+  conf_.iface = env::getstr({"DPC_IFACE"}).value_or(conf_.iface);
+  conf_.addr = env::getstr({"DPC_ADDR"}).value_or(conf_.addr);
+  conf_.port = env::getint({"DPC_PORT"}).value_or(conf_.port);
+  conf_.threads = env::getint({"DPC_WORKERS"}).value_or(conf_.threads);
+  conf_.pinned = env::getbool({"DPC_PIN"}).value_or(false);
+  std::tie(conf_.iface, conf_.addr) = net::resolve_endpoint(conf_.iface, conf_.addr);
 
+  // Handle pinning
+  std::vector<int> cores;
+  if (conf_.pinned) {
+    cores = cpu::get_nic_local_cores(conf_.iface);
+    if (cores.size() < conf_.threads)
+      DPC_ERROR("not enough NIC-local cores for iface {}: need {} have {}", conf_.iface, conf_.threads, cores.size());
+    if (cores.size() - conf_.threads <= 1)
+      DPC_WARN("only {} NIC-local cores left after pinning {} workers", cores.size() - conf_.threads, conf_.threads);
+  }
 
-  for (auto i = 0; i < conf_.threads; ++i) workers.push_back(std::make_unique<SockWorker>(1, *this, conf));
+  for (auto i = 0; i < conf_.threads; ++i)
+    workers.push_back(std::make_unique<SockWorker>(*this, i, cores.empty() ? -1 : cores[i]));
 }
 
 void SockBackend::print(bool details) const {
-  DPC_INFO("backend: {}, addr={}:{} workers={}", name(), conf_.addr, conf_.port, conf_.threads);
+  DPC_INFO("backend: {}, addr={}:{} workers={}{}", name(), conf_.addr, conf_.port, conf_.threads,
+           conf_.pinned ? ".pinned" : "");
 }

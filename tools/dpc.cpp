@@ -6,7 +6,7 @@
 
 int main(int, char**) {
 
-  dpc::NoopConfig cfg(1000, 2);
+  // dpc::SockConfig sock_cfg = dpc::SockConfig::fromJson("../../configs/sock.json");
 
   dpc::Context ctx(0, 10, dpc::DeviceConfig::GenericTofino1, dpc::SockConfig{});
 

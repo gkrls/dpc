@@ -1,3 +1,4 @@
+#include "dpc/util/error.h"
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "dpc/backend/backend.h"
 #include "dpc/backend/noop/noop_backend.h"
@@ -33,7 +34,9 @@ class ControlBackend;
 class ControlWorker : public BackendWorker {
 public:
   ControlWorker(uint16_t tid, ControlBackend &be);
-  ~ControlWorker() { stop(true); }
+  ~ControlWorker() override {
+    DPC_CHECK(!thread_.joinable(), "ControlWorker destroyed without stop()+join()");
+  }
 
   std::atomic<Task::Status> next_status{Task::Completed};
   std::atomic<int> started{0};
@@ -46,6 +49,10 @@ public:
       released_ = true;
     }
     exec_cv_.notify_all();
+  }
+
+  void join() override {
+    if (thread_.joinable()) thread_.join();
   }
 
 protected:
@@ -61,12 +68,16 @@ protected:
   }
 
 private:
+  void run() { main(); }   // no pinning in test worker
+
   ControlBackend &be_;
   std::atomic<bool> blocking_{false};
   std::mutex exec_mtx_;
   std::condition_variable exec_cv_;
   bool released_ = false;
+  std::thread thread_;     // MUST be last
 };
+
 
 class ControlBackend : public MultiworkerBackend {
 public:
@@ -97,7 +108,10 @@ private:
   std::atomic<int> aborted_total_{0};
 };
 
-ControlWorker::ControlWorker(uint16_t tid, ControlBackend &be) : BackendWorker(tid, be), be_(be) {}
+ControlWorker::ControlWorker(uint16_t tid, ControlBackend &be)
+    : BackendWorker(static_cast<MultiworkerBackend &>(be), tid),
+      be_(be),
+      thread_(&ControlWorker::run, this) {}
 
 template <typename Pred> bool wait_for(Pred pred, std::chrono::milliseconds timeout = 1s) {
   auto deadline = std::chrono::steady_clock::now() + timeout;

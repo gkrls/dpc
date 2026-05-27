@@ -1,6 +1,8 @@
 #include "dpc/backend/sock/sock_backend.h"
+#include "dpc/util/error.h"
 
 #include <arpa/inet.h>
+#include <cstring>
 #include <fcntl.h>
 #include <unistd.h>
 

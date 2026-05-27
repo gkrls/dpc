@@ -3,7 +3,6 @@
 
 #include "dpc/config.h"
 #include "dpc/task.h"
-#include "dpc/util/error.h"
 #include "dpc/util/queue.h"
 
 #include <atomic>
@@ -11,7 +10,6 @@
 #include <mutex>
 #include <string>
 #include <string_view>
-#include <thread>
 
 namespace dpc {
 
@@ -87,7 +85,7 @@ protected:
    * @brief Start the backend, creating all necessary resources
    * After this call the backend is ready to execute tasks
    */
-  virtual void start() { /* empty */; }
+  virtual void start() { /* empty */ ; }
   /**
    * @brief Stop the backend, destroying resources etc
    * After this call the backend cannot accept tasks
@@ -207,9 +205,14 @@ public:
   BackendWorker &operator=(const BackendWorker &) = delete;
   virtual ~BackendWorker() {
     // Abort if subclass destructor did not join()
-    DPC_CHECK(!thread_.joinable(), "Worker subclass forgot to call stop(1) in its destructor");
+    // DPC_CHECK(!thread_.joinable(), "Worker subclass forgot to call stop(1) in its destructor");
     stop(true);
   }
+
+  /**
+   * @brief Get the worker's id (within the backend)
+   */
+  uint16_t id() const { return id_; }
 
   /**
    * @brief Start polling the queue and submitting tasks
@@ -237,12 +240,7 @@ public:
   /**
    * @brief Block until the worker's thread finishes
    */
-  void join() { if (thread_.joinable()) thread_.join(); }
-
-  /**
-   * @brief Get the worker's id (within the backend)
-   */
-  uint16_t id() const { return id_; }
+  virtual void join() = 0;
 
   // Optional hooks.
   virtual void on_task_abort(std::shared_ptr<Task> /*task*/) {}
@@ -250,20 +248,18 @@ public:
   virtual void on_task_finish(std::shared_ptr<Task> /*task*/, Task::Status /*status*/) {}
 
 protected:
-  explicit BackendWorker(uint16_t id, MultiworkerBackend &backend)
-      : id_(id), backend_(backend), thread_(&BackendWorker::main, this) {}
+  explicit BackendWorker(MultiworkerBackend &backend, uint16_t id) : id_(id), backend_(backend) {}
   virtual Task::Status execute(std::shared_ptr<Task> task) = 0;
-
-private:
   void main();
   uint16_t id_;
   MultiworkerBackend &backend_;
+
+private:
   enum class State { Init = 0, Running, Stopped };
   std::mutex mutex_;
   std::condition_variable cv_;
   std::atomic<State> state_{State::Init};
   MPSCQueue<std::shared_ptr<Task>> queue_;
-  std::thread thread_; // must be last!
 };
 
 /**

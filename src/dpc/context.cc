@@ -58,16 +58,7 @@ std::unique_ptr<BackendConfig> resolveBackend() {
     return BackendConfig::fromJson(std::string{*config_path});
   }
 
-  if (backend_name.has_value()) {
-    return BackendConfig::get(*backend_name);
-    // return BackendConfig::
-    // // kind given but no file — default-construct that kind
-    // switch (Backend::get(std::string{*backend_name})) {
-    // case Backend::Noop: return std::make_unique<NoopConfig>();
-    // case Backend::Dpdk: return std::make_unique<DpdkConfig>();
-    // }
-    // DPC_ERROR("unhandled backend kind");
-  }
+  if (backend_name.has_value()) { return BackendConfig::get(*backend_name); }
 
   // neither given — default Noop with defaults
   return std::make_unique<NoopConfig>();
@@ -94,10 +85,20 @@ Context::Context(uint16_t rank, uint16_t world, BackendConfig const &bc, uint32_
 
 static std::atomic<int> live_contexts{0};
 
+void print_build_info_once() {
+  static std::once_flag flag;
+  std::call_once(flag, [] {
+    auto trace = fmt::format("{}", DPC_TRACE_ENABLED ? " on" : "off");
+    auto simd = fmt::format("{}", DPC_AVX512_AVAILABLE ? "avx512" : DPC_AVX2_AVAILABLE ? "avx2" : "off");
+    fmt::println("dpc v{}-{} simd={} trace={}\n", DPC_VERSION_STRING, DPC_BUILD_TYPE, simd, trace);
+  });
+}
+
 Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc, uint32_t timeout)
     : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
       state_(Context::Init), timeout(timeout) {
   DPC_FATAL_IF(live_contexts.fetch_add(1) > 0, "multiple contexts not supported yet");
+  print_build_info_once();
 
   this->device_ = std::make_unique<Device>(dc);
   this->backend_ = Backend::create(*this, bc);
@@ -106,14 +107,6 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendC
 
   DPC_ERROR_IF(!this->backend_, "failed to create backend '{}'",
                Backend::name(bc.kind_)); // options().name);
-
-  static std::once_flag flag;
-  std::call_once(flag, [] {
-    auto trace = fmt::format("{}", DPC_TRACE_ENABLED ? " on" : "off");
-    auto simd = fmt::format("{}", DPC_AVX512_AVAILABLE ? "avx512" : DPC_AVX2_AVAILABLE ? "avx2" : "off");
-    fmt::println("dpc v{}-{} simd={} trace={}\n", DPC_VERSION_STRING, DPC_BUILD_TYPE, simd, trace);
-  });
-
   print();
   start();
 }
@@ -123,11 +116,7 @@ Context::~Context() {
   live_contexts.fetch_sub(1);
 }
 
-static void print_build_info() {}
-
 void Context::print() {
-  print_build_info();
-
   DPC_INFO("context: rank={} world={} device={} backend={} scheduler={} watchdog={}", rank, world, device().name(),
            backend().name(), hasScheduler() ? "on" : "off",
            this->timeout.count() ? fmt::format("{:.3g}s", static_cast<double>(this->timeout.count()) / 1000.0) : "off");

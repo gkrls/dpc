@@ -34,7 +34,7 @@ inline void log_bad(const char *name, const char *value) {
   printf("dpc: %s=%s not valid, ignoring environment\n", name, value);
 }
 
-inline bool iequals(std::string_view a, std::string_view b) {
+inline bool equals_ignore_case(std::string_view a, std::string_view b) {
   return std::equal(a.begin(), a.end(), b.begin(), b.end(),
                     [](char x, char y) { return std::tolower((unsigned char)x) == std::tolower((unsigned char)y); });
 }
@@ -47,11 +47,11 @@ inline std::optional<bool> getbool(std::initializer_list<const char *> names) {
   if (!e) return std::nullopt;
 
   std::string_view v(e);
-  if (v == "1" || detail::iequals(v, "on") || detail::iequals(v, "true")) {
+  if (v == "1" || detail::equals_ignore_case(v, "on") || detail::equals_ignore_case(v, "true")) {
     detail::log_ok(matched, e);
     return true;
   }
-  if (v == "0" || detail::iequals(v, "off") || detail::iequals(v, "false")) {
+  if (v == "0" || detail::equals_ignore_case(v, "off") || detail::equals_ignore_case(v, "false")) {
     detail::log_ok(matched, e);
     return false;
   }
@@ -107,7 +107,7 @@ inline std::optional<std::string> getstr(std::initializer_list<const char *> nam
   std::string v(e);
   if (allowed.size()) {
     for (auto a : allowed) {
-      if (detail::iequals(v, a)) {
+      if (detail::equals_ignore_case(v, a)) {
         detail::log_ok(matched, e);
         return a;
       }
