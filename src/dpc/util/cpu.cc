@@ -1,4 +1,5 @@
 #include "dpc/util/cpu.h"
+#include "dpc/util/error.h"
 
 #include <algorithm>
 #include <cstring>
@@ -72,11 +73,16 @@ std::vector<int> get_nic_local_cores(const std::string &ifname) {
 }
 
 void pin_to_core(int core) {
+  std::lock_guard<std::mutex> lk(g_pinned_mu);
+  if (core < 0) return;
+  if (std::find(g_pinned.begin(), g_pinned.end(), core) != g_pinned.end())
+    DPC_ERROR("core {} is already pinned", core);
   cpu_set_t set;
   CPU_ZERO(&set);
   CPU_SET(core, &set);
   int rc = pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
   if (rc != 0) throw std::runtime_error("pin_to_core(" + std::to_string(core) + ") failed: " + std::strerror(rc));
+  g_pinned.push_back(core);
 }
 
 void pin_worker(size_t tid, size_t n, const std::string &ifname) {
@@ -86,12 +92,7 @@ void pin_worker(size_t tid, size_t n, const std::string &ifname) {
   if (n > pool.size())
     throw std::runtime_error("pin_worker: " + std::to_string(n) + " workers but only " + std::to_string(pool.size()) +
                              " cores available");
-
-  int core = pool[tid];
-  pin_to_core(core);
-
-  std::lock_guard<std::mutex> lk(g_pinned_mu);
-  g_pinned.push_back(core);
+  pin_to_core(pool[tid]);
 }
 
 } // namespace dpc::cpu

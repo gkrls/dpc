@@ -107,6 +107,7 @@ private:
 
 class SockBackend : public MultiworkerBackend {
 public:
+  SockBackend()=delete;
   SockBackend(Context &ctx, const SockConfig &conf = {});
   const SockConfig &config() const override { return conf_; }
 

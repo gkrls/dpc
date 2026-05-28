@@ -26,6 +26,10 @@ struct DeviceConfig {
   uint16_t reducer_mode = 2;
   /// @brief Maximum number of slots available
   uint16_t slots = 32768;
+  /// @brief Minimum world size required
+  uint16_t world_min = 1;
+  /// @brief Maximum world size allowed
+  uint16_t world_max = 32;
   /// @brief Grpc
   struct ControllerConfig {
     std::string grpc_addr = "";
@@ -62,6 +66,8 @@ inline const DeviceConfig DeviceConfig::GenericTofino1 {
   .reducers = 32,
   .reducer_mode = 2,
   .slots = 32768,
+  .world_min = 1,
+  .world_max = 32,
   .session = {
     .id = 1,
     .pool_base = 0,
@@ -81,6 +87,8 @@ inline const DeviceConfig DeviceConfig::GenericTofino2 {
   .reducers = 32,
   .reducer_mode = 2,
   .slots = 32768,
+  .world_min = 1,
+  .world_max = 32,
   .session = {
     .id = 1,
     .pool_base = 0,
@@ -90,10 +98,11 @@ inline const DeviceConfig DeviceConfig::GenericTofino2 {
   },
 };
 
+class Context;
 
 class Device {
 public:
-  Device(DeviceConfig const& conf);
+  Device(Context &ctx, DeviceConfig const& conf);
   DeviceConfig const conf;
   DeviceConfig const &config() { return conf; }
   void print(bool detail);

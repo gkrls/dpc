@@ -1,6 +1,7 @@
 import glob
 import os
 import pprint
+import shutil
 import subprocess
 import sys
 import warnings
@@ -12,12 +13,12 @@ from setuptools import Command, find_packages, setup
 warnings.filterwarnings("ignore", message=".*easy_install command is deprecated.*")
 warnings.filterwarnings("ignore", message=".*setup.py install is deprecated.*")
 # from torch.utils import cpp_extension
-from distutils import log as distlog
+# from distutils import log as distlog
 
 from torch.utils.cpp_extension import CUDA_HOME as TORCH_CUDA_HOME
 from torch.utils.cpp_extension import BuildExtension, CppExtension, include_paths
 
-distlog.set_verbosity(0)  # only show errors
+# distlog.set_verbosity(0)  # only show errors
 
 PACKAGE_NAME = "dpc"
 PACKAGE_VERSION = "0.0.1"
@@ -71,42 +72,6 @@ def get_dpdk_config():
     }
 
 
-# def get_dpdk_config():
-#     """Get DPDK configuration from pkg-config"""
-#     def run_pkg_config(args):
-#         try:
-#             return subprocess.check_output(['pkg-config'] + args, encoding='utf-8').strip()
-#         except:
-#             return ""
-
-#     libdir = run_pkg_config(['--variable=libdir', 'libdpdk'])
-#     if not libdir:
-#         raise RuntimeError("DPDK not found. Set PKG_CONFIG_PATH to point to libdpdk.pc")
-
-#     includes = run_pkg_config(['--cflags-only-I', 'libdpdk'])
-#     include_dirs = [flag[2:] for flag in includes.split() if flag.startswith('-I')]
-
-#     libs = run_pkg_config(['--libs-only-l', 'libdpdk'])
-#     libraries = [lib[2:] for lib in libs.split() if lib.startswith('-l')]
-
-#     pmd_candidates = sorted(glob.glob(f"{libdir}/dpdk/pmds-*"))
-#     pmd_dir = pmd_candidates[-1] if pmd_candidates else ""
-
-#     # pmd_dir = os.path.join(libdir, "dpdk", "pmds-23.0")
-#     return {
-#         'libdir': libdir,
-#         'pmd_dir': pmd_dir,
-#         'include_dirs': include_dirs,
-#         'libraries': libraries
-#     }
-
-dpdk_config = get_dpdk_config()
-
-print("DPDK_INCLUD:", dpdk_config["include_dirs"])
-print("DPDK_LIBDIR:", dpdk_config["libdir"])
-print("DPDK_PMDDIR:", dpdk_config["pmd_dir"])
-print("DPDK_CFLAGS:", dpdk_config["other_cflags"])
-
 # cuda_home = os.environ.get("CUDA_HOME", "/usr/local/cuda-12.6")
 
 
@@ -120,36 +85,45 @@ def find_cuda_home():
         return os.path.dirname(os.path.dirname(nvcc))
     raise RuntimeError("CUDA not found. Install CUDA or set CUDA_HOME.")
 
+dpdk_config = get_dpdk_config()
 
 cuda_home = find_cuda_home()
 
-dpa_install = os.environ.get(
-    "DPA_INSTALL", os.path.abspath(os.path.join(HERE, "..", "..", "build", "install"))
-)
+print("DPDK_INCLUD:", dpdk_config["include_dirs"])
+print("DPDK_LIBDIR:", dpdk_config["libdir"])
+print("DPDK_PMDDIR:", dpdk_config["pmd_dir"])
+print("DPDK_CFLAGS:", dpdk_config["other_cflags"])
+print("CUDA_HOME:", cuda_home)
 
-include_dirs = [
-    # os.path.dirname(os.path.abspath(__file__)),
-    # os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "include")),
-    str(HERE),
-    os.path.join(dpa_install, "include"),
-    os.path.join(cuda_home, "include"),
-    # *dpdk_includes
-]
-library_dirs = [
-    # os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")),
-    os.path.join(dpa_install, "lib"),
-    # *dpdk_libdirs
-]
+
+dpc_build = os.path.abspath(os.path.join(HERE, "..", "..", "build"))
+dpc_source = os.path.abspath(os.path.join(HERE, "..", "..", "src"))
+dpc_install = os.environ.get("DPC_INSTALL", os.path.join(dpc_build, "install"))
+# os.path.abspath(os.path.join(HERE, "..", "..", "build", "install"))
 
 torch_includes = include_paths()
 print("TORCH_INCLUDES:", torch_includes)
 
-has_cuda = torch.cuda.is_available()
+include_dirs = [
+    str(HERE),
+    os.path.join(dpc_install, "include"),
+    dpc_source,
+    os.path.join(cuda_home, "include"),
+    dpdk_config["include_dirs"],
+    torch_includes
+]
+library_dirs = [
+    # os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")),
+    os.path.join(dpc_install, "lib"),
+    os.path.join(dpc_build, "lib"),
+    # *dpdk_libdirs
+]
+
 is_develop = (
     "develop" in sys.argv
 )  # or "-e" in sys.argv  # pip install -e . ends up here
 
-define_macros = [("DPA_PYTHON", "1")]
+define_macros = [("DPC_PYTHON", "1")]
 cxx_args = [
     "-fvisibility=hidden",
     "-fvisibility-inlines-hidden",
@@ -159,22 +133,15 @@ cxx_args = [
 ]
 cuda_args = ["-O3"]
 
-if has_cuda:
-    define_macros.append(("DPA_CUDA", "1"))
-# if is_develop:
-#     define_macros.append(("DPA_DEBUG", "1"))
-# cxx_args.extend(["-O2", "-g"])  # Keep optimization + debug info
-# cuda_args.extend(["-O2", "-G"])
-
-# cxx_args.extend(["-O3"])
-# cuda_args.extend(["-O3"])
+if torch.cuda.is_available():
+    define_macros.append(("DPC_CUDA", "1"))
 
 ext = CppExtension(
     name="dpc._C",
     sources=sources,
-    include_dirs=include_dirs
-    + dpdk_config["include_dirs"]
-    + include_paths(),  # include_dirs, #+ d
+    include_dirs=include_dirs,
+    # + dpdk_config["include_dirs"]
+    # + include_paths(),  # include_dirs, #+ d
     libraries=["dpc"],  # Don't duplicate DPDK libs here
     library_dirs=library_dirs + [dpdk_config["libdir"]],  # library_dirs, #+
     define_macros=define_macros,

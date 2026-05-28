@@ -1,4 +1,3 @@
-#include "dpc/backend/noop/noop_backend.h"
 #include "dpc/backend/sock/sock_backend.h"
 #include "dpc/context.h"
 #include "dpc/device.h"

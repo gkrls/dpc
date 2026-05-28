@@ -3,7 +3,12 @@
 #include "dpc/util/config.h"
 #include "dpc/util/cpu.h"
 #include "dpc/util/env.h"
+#include "dpc/util/log.h"
 #include "dpc/util/net.h"
+#include "dpc/util/pp.h"
+#include <chrono>
+#include <ctime>
+#include <thread>
 
 using namespace dpc;
 
@@ -44,6 +49,9 @@ SockBackend::SockBackend(Context &ctx, const SockConfig &conf) : MultiworkerBack
 
   for (auto i = 0; i < conf_.threads; ++i)
     workers.push_back(std::make_unique<SockWorker>(*this, i, cores.empty() ? -1 : cores[i]));
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  DPC_DEBUG("pinned cores: {}", dpc::pp::head(cpu::get_pinned_cores()));
 }
 
 void SockBackend::print(bool details) const {

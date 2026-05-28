@@ -1,7 +1,6 @@
 #include "dpc/context.h"
 
 #include "dpc/backend/backend.h"
-#include "dpc/backend/noop/noop_backend.h"
 
 #include <mutex>
 #if DPC_DPDK_ENABLED
@@ -30,13 +29,19 @@ using namespace dpc;
 
 namespace {
 
+static const int print_build = [] {
+  auto trace = fmt::format("{}", DPC_TRACE_ENABLED ? " on" : "off");
+  auto simd = fmt::format("{}", DPC_AVX512_AVAILABLE ? "avx512" : DPC_AVX2_AVAILABLE ? "avx2" : "off");
+  fmt::println("dpc v{}-{} simd={} trace={}\n", DPC_VERSION_STRING, DPC_BUILD_TYPE, simd, trace);
+  return 1;
+}();
+
 static uint64_t getUniqueID() {
   static std::atomic<uint64_t> count_(0);
   return count_.fetch_add(1);
 }
 
-const auto kScheduler = env::getstr({"DPC_SCHEDULER"}, {"off", "on", "fifo", "fifo-threaded"}).value_or("off");
-const auto kTimeout = env::getuint({"DPC_TIMEOUT"});
+const auto kTimeout = env::getfloat({"DPC_TIMEOUT"}).value_or(0.0f);
 
 DeviceConfig resolveDevice() {
   if (auto path = env::getstr({"DPC_DEVICE"})) return DeviceConfig::fromJson(std::string{*path});
@@ -61,7 +66,8 @@ std::unique_ptr<BackendConfig> resolveBackend() {
   if (backend_name.has_value()) { return BackendConfig::get(*backend_name); }
 
   // neither given — default Noop with defaults
-  return std::make_unique<NoopConfig>();
+  // return std::make_unique<SockConfig>();
+  return BackendConfig::get(Backend::Default);
 }
 
 } // namespace
@@ -85,25 +91,18 @@ Context::Context(uint16_t rank, uint16_t world, BackendConfig const &bc, uint32_
 
 static std::atomic<int> live_contexts{0};
 
-void print_build_info_once() {
-  static std::once_flag flag;
-  std::call_once(flag, [] {
-    auto trace = fmt::format("{}", DPC_TRACE_ENABLED ? " on" : "off");
-    auto simd = fmt::format("{}", DPC_AVX512_AVAILABLE ? "avx512" : DPC_AVX2_AVAILABLE ? "avx2" : "off");
-    fmt::println("dpc v{}-{} simd={} trace={}\n", DPC_VERSION_STRING, DPC_BUILD_TYPE, simd, trace);
-  });
-}
-
 Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc, uint32_t timeout)
     : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
       state_(Context::Init), timeout(timeout) {
   DPC_FATAL_IF(live_contexts.fetch_add(1) > 0, "multiple contexts not supported yet");
-  print_build_info_once();
 
-  this->device_ = std::make_unique<Device>(dc);
+  const auto kScheduler = env::getstr({"DPC_SCHEDULER"}, {"off", "on", "fifo", "fifo-threaded"}).value_or("off");
+  const auto kTimeout = static_cast<uint32_t>(env::getfloat({"DPC_TIMEOUT"}, 0.0f).value_or(timeout / 1000.0) * 1000);
+
+  this->device_ = std::make_unique<Device>(*this, dc);
   this->backend_ = Backend::create(*this, bc);
   this->scheduler_ = kScheduler != "off" ? create_scheduler(*this, kScheduler) : nullptr;
-  this->timeout = std::chrono::milliseconds(kTimeout.value_or(timeout));
+  this->timeout = std::chrono::milliseconds(kTimeout ? kTimeout : kDefaultOperationTimeoutMS);
 
   DPC_ERROR_IF(!this->backend_, "failed to create backend '{}'",
                Backend::name(bc.kind_)); // options().name);

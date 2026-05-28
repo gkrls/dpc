@@ -2,6 +2,7 @@
 #include "dpc/context.h"
 #include "dpc/util/cpu.h"
 #include "dpc/util/error.h"
+#include "dpc/util/log.h"
 
 using namespace dpc;
 
@@ -15,7 +16,10 @@ SockWorker::~SockWorker() {
 }
 
 void SockWorker::run() {
-  if (pin_core_ >= 0) cpu::pin_to_core(pin_core_);
+  if (pin_core_ >= 0) {
+    DPC_DEBUG("pinning worker to core {}", pin_core_);
+    cpu::pin_to_core(pin_core_);
+  }
   main();
 }
 

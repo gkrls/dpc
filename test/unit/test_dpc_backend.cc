@@ -70,7 +70,7 @@ protected:
 private:
   void run() { main(); }   // no pinning in test worker
 
-  ControlBackend &be_;
+  // ControlBackend &be_;
   std::atomic<bool> blocking_{false};
   std::mutex exec_mtx_;
   std::condition_variable exec_cv_;
@@ -110,7 +110,7 @@ private:
 
 ControlWorker::ControlWorker(uint16_t tid, ControlBackend &be)
     : BackendWorker(static_cast<MultiworkerBackend &>(be), tid),
-      be_(be),
+      // be_(be),
       thread_(&ControlWorker::run, this) {}
 
 template <typename Pred> bool wait_for(Pred pred, std::chrono::milliseconds timeout = 1s) {

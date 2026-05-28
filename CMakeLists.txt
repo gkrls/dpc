@@ -9,7 +9,6 @@ endif()
 message(STATUS "Building DPC version: ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR} ${CMAKE_BUILD_TYPE}")
 
 # User facing options
-option(DPC_DEVELOP "Build DPC for development" OFF)
 option(DPC_HOST    "Build DPA host library" ON)
 option(DPC_SWITCH  "Build DPA device library" OFF)
 option(DPC_DPDK    "Build the dpdk backend" ON)
@@ -22,21 +21,19 @@ option(DPC_TSAN    "Build with ThreadSanitizer" OFF)
 option(DPC_DOCS    "Build documentation" OFF)
 option(DPC_TRACE   "Enable tracing in Debug builds" OFF)
 option(DPC_PROFILE "Enable tracing in Debug builds" OFF)
+option(DPC_DEVELOP "Build DPC for development" OFF)
+option(DPC_CCACHE  "Use ccache to speed up rebuilds" ON)
 
-# add_compile_options(
-#   -Wall -Wextra -Wpedantic
-#   -Wshadow=local        # shadowed variables
-#   -Wnon-virtual-dtor    # base classes need virtual destructors
-#   -Wold-style-cast      # C-style casts in C++
-#   -Wcast-align          # alignment violations
-#   -Wunused              # unused vars/params
-#   -Woverloaded-virtual  # accidentally hiding virtual functions
-#   -Wconversion          # implicit narrowing conversions
-#   -Wsign-conversion     # signed/unsigned conversions
-#   -Wnull-dereference    # null deref detection
-#   -Wdouble-promotion    # accidental float -> double
-#   -Wformat=2            # printf-style format checks
-# )
+if(DPC_CCACHE)
+  find_program(CCACHE_PROGRAM ccache)
+  if(CCACHE_PROGRAM)
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    message(STATUS "ccache enabled: ${CCACHE_PROGRAM}")
+  else()
+    message(STATUS "ccache requested but not found")
+  endif()
+endif()
 
 set(CMAKE_CXX_STANDARD 17) # can do 20
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -59,6 +56,21 @@ add_compile_options(
   -Wformat=2
   -Wno-unused-parameter
 )
+# add_compile_options(
+#   -Wall -Wextra -Wpedantic
+#   -Wshadow=local        # shadowed variables
+#   -Wnon-virtual-dtor    # base classes need virtual destructors
+#   -Wold-style-cast      # C-style casts in C++
+#   -Wcast-align          # alignment violations
+#   -Wunused              # unused vars/params
+#   -Woverloaded-virtual  # accidentally hiding virtual functions
+#   -Wconversion          # implicit narrowing conversions
+#   -Wsign-conversion     # signed/unsigned conversions
+#   -Wnull-dereference    # null deref detection
+#   -Wdouble-promotion    # accidental float -> double
+#   -Wformat=2            # printf-style format checks
+# )
+#
 
 if(DPC_WERROR)
   add_compile_options(-Werror)
@@ -123,4 +135,3 @@ if (DPC_TEST)
   enable_testing()
   add_subdirectory(test)
 endif()
-

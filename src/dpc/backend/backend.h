@@ -31,6 +31,8 @@ public:
 #if DPC_DPDK_ENABLED
     Dpdk,
 #endif
+
+    Default = Sock,
   };
   // ================================================
 

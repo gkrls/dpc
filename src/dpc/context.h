@@ -22,16 +22,17 @@ public:
   friend class Task;
 
   /// Default operation timeout (ms)
-  inline static const uint32_t kDefaultOperationTimeout = 30000;
+  inline static const uint32_t kDefaultOperationTimeoutMS = 30000;
+  using duration_t = std::chrono::milliseconds;
 
-  Context(uint16_t rank, uint16_t world, uint32_t timeout = kDefaultOperationTimeout);
+  Context(uint16_t rank, uint16_t world, uint32_t timeout = kDefaultOperationTimeoutMS);
   // Device given — backend from env or default
-  Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, uint32_t timeout = kDefaultOperationTimeout);
+  Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, uint32_t timeout = kDefaultOperationTimeoutMS);
   // Backend given — device from env/default
-  Context(uint16_t rank, uint16_t world, BackendConfig const &bc, uint32_t timeout = kDefaultOperationTimeout);
+  Context(uint16_t rank, uint16_t world, BackendConfig const &bc, uint32_t timeout = kDefaultOperationTimeoutMS);
   // Both given — no env
   Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc,
-          uint32_t timeout = kDefaultOperationTimeout);
+          uint32_t timeout = kDefaultOperationTimeoutMS);
 
   ~Context();
 

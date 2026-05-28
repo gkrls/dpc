@@ -1,9 +1,9 @@
 #ifndef DPC_UTIL_ERROR_H
 #define DPC_UTIL_ERROR_H
 
-#include "dpc/util/log.h"
+#include "dpc/util/log.h" // IWYU pragma: keep
 
-#include <stdexcept>
+#include <stdexcept> // IWYU pragma: keep
 
 #ifndef __FILE_NAME__
 #define __FILE_NAME__ __FILE__

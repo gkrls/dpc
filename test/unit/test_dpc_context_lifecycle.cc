@@ -12,7 +12,7 @@ using namespace dpc::test;
 TEST_CASE("context: constructor with device config") {
   Context ctx(0, 1, DeviceConfig::GenericTofino1);
   CHECK(ctx.isRunning());
-  CHECK(ctx.backend().is(Backend::Noop)); // default backend
+  CHECK(ctx.backend().is(Backend::Default)); // default backend
 }
 
 TEST_CASE("context: constructor with backend config") {
