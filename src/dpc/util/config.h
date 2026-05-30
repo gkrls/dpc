@@ -5,6 +5,7 @@
 
 #include "fmt/format.h" // IWYU pragma: keep
 #include "nlohmann/json.hpp"
+#include "nlohmann/json_fwd.hpp"
 
 #include <fstream>
 #include <stdexcept>

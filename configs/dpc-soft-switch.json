@@ -1,0 +1,22 @@
+{
+  "name": "soft-switch",
+  "asic": false,
+  "addr": "127.0.0.1",
+  "port": 4241,
+  "supports": ["sock"],
+  "pipes": 4,
+  "reducers": 32,
+  "reducer_mode": 2,
+  "reducer_slots": 16384,
+  "value_width": 4,
+  "counters": 1,
+  "world_min": 1,
+  "world_max": 4,
+  "max_sessions": 1,
+  "controller": {
+    "cli": true
+  },
+  "extra": {
+    "wire_big_endian": true
+  }
+}
