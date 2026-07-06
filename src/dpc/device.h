@@ -93,7 +93,7 @@ struct DeviceConfig {
   static const DeviceConfig GenericTofino2;
 };
 
-inline const DeviceConfig DeviceConfig::GenericTofino1{
+inline const DeviceConfig DeviceConfig::GenericTofino1 = {
     /* name         */ "generic-tofino1",
     /* mac          */ "42:00:00:00:00:00",
     /* addr         */ "42.0.0.1",
@@ -103,11 +103,12 @@ inline const DeviceConfig DeviceConfig::GenericTofino1{
     /* reducers     */ 32,
     /* reducer_mode */ 2,
     /* reducer_slots*/ 32768,
+    /* value_width  */ 4,
     /* world_min    */ 1,
     /* world_max    */ 32,
 };
 
-inline const DeviceConfig DeviceConfig::GenericTofino2 {
+inline const DeviceConfig DeviceConfig::GenericTofino2 = {
     /* name         */ "generic-tofino2",
     /* mac          */ "42:00:00:00:00:00",
     /* addr         */ "42.0.0.1",
@@ -117,6 +118,7 @@ inline const DeviceConfig DeviceConfig::GenericTofino2 {
     /* reducers     */ 32,
     /* reducer_mode */ 2,
     /* reducer_slots*/ 32768,
+    /* value_width  */ 4,
     /* world_min    */ 1,
     /* world_max    */ 32,
 };
@@ -129,11 +131,9 @@ struct DeviceSession {
     float ingress = 0.0;
     float egress = 0.0;
   } dropsim;
-
-  static DeviceSession getSimple(uint32_t id = 1) {
-    DeviceSession s;
-    s.id = 1;
-    return s;
+  static DeviceSession makeDefault(const DeviceConfig &conf) {
+    // TODO: allocate dynamically from a session store
+    return DeviceSession{1, 0, conf.reducer_slots + 2u, {0.0, 0.0}};
   }
 };
 
@@ -141,15 +141,16 @@ class Context;
 
 class Device {
 public:
-  Device(Context &ctx, const DeviceConfig &conf, const DeviceSession &sess = DeviceSession::getSimple(1));
+  Device(Context &ctx, const DeviceConfig &conf);
+  Device(Context &ctx, const DeviceConfig &conf, const DeviceSession &sess);
   DeviceConfig const &config() { return conf; }
   void print(bool detail);
   std::string name() const { return conf.name; }
 
 public:
   Context &ctx;
-  const DeviceConfig &conf;
-  const DeviceSession &sess;
+  const DeviceConfig conf;
+  const DeviceSession sess;
 };
 
 } // namespace dpc

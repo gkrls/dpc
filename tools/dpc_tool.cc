@@ -6,7 +6,6 @@
 int main(int, char**) {
 
   // dpc::SockConfig sock_cfg = dpc::SockConfig::fromJson("../../configs/sock.json");
-
   dpc::Context ctx(0, 10, dpc::DeviceConfig::GenericTofino1, dpc::SockConfig{});
 
   std::vector<uint32_t> data(1024);

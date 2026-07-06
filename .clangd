@@ -16,8 +16,4 @@ Diagnostics:
     #   - modernize-use-trailing-return-type  # noisy
     #   - readability-magic-numbers           # noisy
 Index:
-  StandardLibrary: Yes
   Background: Build
-Completion:
-  AllScopes: true
-
