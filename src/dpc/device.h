@@ -26,7 +26,7 @@ struct DeviceConfig {
   /// @brief Maximum number of switch pipes available
   uint16_t pipes = 4;
   /// @brief Maximum number of exponent reducers available
-  uint16_t exponents = 4;
+  uint16_t exponents = 1;
   /// @brief Maximum number of values reducers available
   uint16_t reducers = 32;
   /// @brief Number of values per reducer
@@ -48,13 +48,6 @@ struct DeviceConfig {
     std::string thrift_addr = "";
     uint16_t thrift_port = 9090;
   } controller{};
-  struct SessionConfig {
-    uint32_t id = 1;
-    uint32_t pool_base = 0;
-    uint32_t pool_size = 2;
-    float dropsimIngress = 0; // %
-    float dropsimEgress = 0;  // %
-  } session{};
 
   static void fromJson(const nlohmann::json &j, DeviceConfig &c) {
     OPT(j, c, name);
@@ -69,13 +62,16 @@ struct DeviceConfig {
     OPT(j, c, world_min);
     OPT(j, c, world_max);
     OPT(j, c, sessions_max);
-
-    if (j.contains("session")) {
-      auto sj = j.at("session");
-      OPT(sj, c.session, id);
-      OPT(sj, c.session, pool_base);
-      OPT(sj, c.session, pool_size);
-    }
+  }
+  static void fromJson(const std::string &path, DeviceConfig &out) {
+    nlohmann::json j = conf::json_load(path);
+    fromJson(j, out);
+  }
+  static DeviceConfig fromJson(const std::string &path) { return fromJson(conf::json_load(path)); }
+  static DeviceConfig fromJson(const nlohmann::json &j) {
+    DeviceConfig c;
+    fromJson(j, c);
+    return c;
   }
 
   // Friendly aliases
@@ -93,60 +89,67 @@ struct DeviceConfig {
 
   void print(bool detailed = false) const;
 
-  static void fromJson(const std::string &path, DeviceConfig &out) {
-    nlohmann::json j = conf::json_load(path);
-    fromJson(j, out);
-  }
-  static DeviceConfig fromJson(const std::string &path) { return fromJson(conf::json_load(path)); }
-  static DeviceConfig fromJson(const nlohmann::json &j) {
-    DeviceConfig c;
-    fromJson(j, c);
-    return c;
-  }
-
   static const DeviceConfig GenericTofino1;
   static const DeviceConfig GenericTofino2;
 };
 
 inline const DeviceConfig DeviceConfig::GenericTofino1{
-    .name = "generic-tofino1",
-    .mac = "42:00:00:00:00:00",
-    .addr = "42.0.0.1",
-    .port = 4242,
-    .pipes = 2,
-    .exponents = 4,
-    .reducers = 32,
-    .reducer_mode = 2,
-    .reducer_slots = 32768,
-    .world_min = 1,
-    .world_max = 32,
-    .session = {.id = 1, .pool_base = 0, .pool_size = 2, .dropsimIngress = 0, .dropsimEgress = 0},
+    /* name         */ "generic-tofino1",
+    /* mac          */ "42:00:00:00:00:00",
+    /* addr         */ "42.0.0.1",
+    /* port         */ 4242,
+    /* pipes        */ 2,
+    /* exponents    */ 4,
+    /* reducers     */ 32,
+    /* reducer_mode */ 2,
+    /* reducer_slots*/ 32768,
+    /* world_min    */ 1,
+    /* world_max    */ 32,
 };
 
-inline const DeviceConfig DeviceConfig::GenericTofino2{
-    .name = "generic-tofino2",
-    .mac = "42:00:00:00:00:00",
-    .addr = "42.0.0.1",
-    .port = 4242,
-    .pipes = 4,
-    .exponents = 4,
-    .reducers = 32,
-    .reducer_mode = 2,
-    .reducer_slots = 32768,
-    .world_min = 1,
-    .world_max = 32,
-    .session = {.id = 1, .pool_base = 0, .pool_size = 2, .dropsimIngress = 0, .dropsimEgress = 0},
+inline const DeviceConfig DeviceConfig::GenericTofino2 {
+    /* name         */ "generic-tofino2",
+    /* mac          */ "42:00:00:00:00:00",
+    /* addr         */ "42.0.0.1",
+    /* port         */ 4242,
+    /* pipes        */ 4,
+    /* exponents    */ 4,
+    /* reducers     */ 32,
+    /* reducer_mode */ 2,
+    /* reducer_slots*/ 32768,
+    /* world_min    */ 1,
+    /* world_max    */ 32,
+};
+
+struct DeviceSession {
+  uint32_t id = 1;
+  uint32_t pool_base = 0;
+  uint32_t pool_size = 2;
+  struct Dropsim {
+    float ingress = 0.0;
+    float egress = 0.0;
+  } dropsim;
+
+  static DeviceSession getSimple(uint32_t id = 1) {
+    DeviceSession s;
+    s.id = 1;
+    return s;
+  }
 };
 
 class Context;
 
 class Device {
 public:
-  Device(Context &ctx, DeviceConfig const &conf);
-  DeviceConfig const conf;
+  Device(Context &ctx, const DeviceConfig &conf, const DeviceSession &sess = DeviceSession::getSimple(1));
   DeviceConfig const &config() { return conf; }
   void print(bool detail);
   std::string name() const { return conf.name; }
+
+public:
+  Context &ctx;
+  const DeviceConfig &conf;
+  const DeviceSession &sess;
 };
 
 } // namespace dpc
