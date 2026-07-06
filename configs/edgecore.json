@@ -1,7 +1,7 @@
 {
   "name": "edgecore-dcs810",
   "asic": true,
-  "addr": "42.0.0.1",
+  "addr": "42.0.1.42",
   "port": 4241,
   "pipes": 4,
   "pipes_config": [1, 2, 3, 0],
