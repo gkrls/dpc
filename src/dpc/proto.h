@@ -24,6 +24,11 @@ enum Flag : flags_t {
   F_VER = F_U2
 };
 
+struct Flags {
+  flags_t flags;
+
+};
+
 inline static flags_t f_check(flags_t flags, flags_t flag) { return flags & flag; }
 inline static flags_t f_set(flags_t flags, flags_t flag) { return flags | flag; }
 inline static flags_t f_clear(flags_t flags, flags_t flag) { return flags & ~flag; }
@@ -39,12 +44,12 @@ inline static bool f_missmatch(flags_t a, flags_t b, flags_t flag) { return f_ch
 struct Header {
   uint32_t sessid;    // 4 bytes
   uint32_t operid;    // 4 bytes - unused by device
-  uint32_t seqnum;    // 4 bytes
-  uint32_t bitmap;    // 4 bytes
   uint32_t offset;    // 4 bytes - unused by device
   uint16_t slotid;    // 2 bytes
-  uint8_t n;          // 1 byte
-  flags_t flags;      // 1 byte
+  uint8_t rank;       // 1 byte
+  uint8_t world;      // 1 byte
+  uint8_t opflags;
+  uint8_t flags;      // 1 byte
   uint16_t counts;    // 2 bytes(4+12) - unused by device
   uint32_t quants;    // 4 bytes
 
@@ -82,16 +87,12 @@ public:
   // inline uint16_t *payload() { ... } etc..
   inline void htonHeader() {
     sessid = htonl(sessid);
-    seqnum = htonl(seqnum);
-    bitmap = htonl(bitmap);
     offset = htonl(offset);
     counts = htons(counts);
     quants = htonl(quants);
   }
   inline void ntohHeader() {
     sessid = ntohl(sessid);
-    seqnum = ntohl(seqnum);
-    bitmap = ntohl(bitmap);
     offset = ntohl(offset);
     counts = ntohs(counts);
     quants = ntohl(quants);
