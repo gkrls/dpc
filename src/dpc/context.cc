@@ -41,7 +41,7 @@ static uint64_t getUniqueID() {
   return count_.fetch_add(1);
 }
 
-const auto kTimeout = env::getfloat({"DPC_TIMEOUT"}).value_or(0.0f);
+// const auto kTimeout = env::getfloat({"DPC_TIMEOUT"}).value_or(0.0f);
 
 DeviceConfig resolveDevice() {
   if (auto path = env::getstr({"DPC_DEVICE"})) return DeviceConfig::fromJson(std::string{*path});
@@ -88,21 +88,23 @@ Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, uint32_t
     : Context(rank, world, dc, *resolveBackend(), timeout) {}
 Context::Context(uint16_t rank, uint16_t world, BackendConfig const &bc, uint32_t timeout)
     : Context(rank, world, resolveDevice(), bc, timeout) {}
-
+Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend::Kind bk, uint32_t timeout)
+    : Context(rank, world, dc, *BackendConfig::get(bk), timeout) {}
 static std::atomic<int> live_contexts{0};
 
 Context::Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc, uint32_t timeout)
     : rank(rank), world(world), id(getUniqueID()), name_(std::string("ctx-") + std::to_string(id)),
-      state_(Context::Init), timeout(timeout) {
+      state_(Context::Init) {
   DPC_FATAL_IF(live_contexts.fetch_add(1) > 0, "multiple contexts not supported yet");
 
   const auto kScheduler = env::getstr({"DPC_SCHEDULER"}, {"off", "on", "fifo", "fifo-threaded"}).value_or("off");
-  const auto kTimeout = static_cast<uint32_t>(env::getfloat({"DPC_TIMEOUT"}, 0.0f).value_or(timeout / 1000.0) * 1000);
+  const auto kTimeout = env::getuint({"DPC_TIMEOUT"}).value_or(timeout);
 
+  DPC_INFO("Created context with timeout {}", timeout);
   this->device_ = std::make_unique<Device>(*this, dc);
   this->backend_ = Backend::create(*this, bc);
   this->scheduler_ = kScheduler != "off" ? create_scheduler(*this, kScheduler) : nullptr;
-  this->timeout = std::chrono::milliseconds(kTimeout ? kTimeout : kDefaultOperationTimeoutMS);
+  this->timeout = std::chrono::milliseconds(kTimeout);
 
   DPC_ERROR_IF(!this->backend_, "failed to create backend '{}'", Backend::name(bc.kind_)); // options().name);
   print();
@@ -258,8 +260,10 @@ void Context::watchdog() {
         if (task->isRunning()) {
           auto duration = now - task->stats.time.start.load();
           if (duration > timeout) {
-            DPC_FATAL("watchdog: task {} did not finish within {} ms. Aborting...", task->name,
+            DPC_FATAL("watchdog: task {} running for {} ms, exceeding timeout of {} ms. Aborting...", task->name,
                       std::chrono::duration_cast<std::chrono::milliseconds>(duration).count(), timeout.count());
+            // DPC_FATAL("watchdog: task {} did not finish within {} ms. Aborting...", task->name,
+            //           std::chrono::duration_cast<std::chrono::milliseconds>(duration).count(), timeout.count());
             // DPC_FATAL("watchdog: task {} timed out ({}ms > {}ms)", task->name,
             //           std::chrono::duration_cast<std::chrono::milliseconds>(duration).count(),
             //           timeout.count());

@@ -19,6 +19,7 @@
 #include <arpa/inet.h>
 #include <atomic>
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstring>
 #include <iostream>
@@ -78,80 +79,48 @@ static inline uint16_t wire16(uint16_t v) {
 #endif
 }
 
-// static void print_packet(const Config &cfg, const sockaddr_in &src, const uint8_t *buf, ssize_t len) {
-//   char ipbuf[INET_ADDRSTRLEN] = {0};
-//   inet_ntop(AF_INET, &src.sin_addr, ipbuf, sizeof(ipbuf));
-//   std::string ip = ipbuf;
-//   auto it = cfg.ip_to_host.find(ip);
-//   std::string who = (it != cfg.ip_to_host.end()) ? it->second : "?";
-
-//   std::ostringstream os;
-//   os << "[recv] " << who << " " << ip << ":" << ntohs(src.sin_port) << "  len=" << len;
-
-//   if (len >= static_cast<ssize_t>(DPC_HEADER_SIZE)) {
-//     Header h;
-//     std::memcpy(&h, buf, DPA_HEADER_SIZE);
-//     os << "  sess=" << wire32(h.sessid) << " seq=" << wire32(h.seqnum) << " slot=" << wire16(h.slotid)
-//        << " n=" << static_cast<int>(h.n) << std::hex << std::showbase << " flags=" << static_cast<int>(h.flags)
-//        << " bitmap=" << wire32(h.bitmap) << std::noshowbase << std::dec << " oper=" << wire32(h.operid)
-//        << " off=" << wire32(h.offset) << " counts=" << wire16(h.counts) << " quants=" << wire32(h.quants);
-//     ssize_t payload = len - DPA_HEADER_SIZE;
-//     os << "  payload=" << payload << "B";
-//     // first few payload bytes as hex, helps eyeball the reduction data
-//     ssize_t show = payload < 16 ? payload : 16;
-//     if (show > 0) {
-//       os << " [";
-//       for (ssize_t i = 0; i < show; ++i) {
-//         char b[4];
-//         std::snprintf(b, sizeof(b), "%02x", buf[DPA_HEADER_SIZE + i]);
-//         os << (i ? " " : "") << b;
-//       }
-//       if (payload > show) os << " ...";
-//       os << "]";
-//     }
-//   } else {
-//     os << "  (runt: shorter than " << DPA_HEADER_SIZE << "B header)";
-//   }
-//   std::cout << os.str() << std::endl;
-// }
-
 static std::atomic<bool> g_running{true};
+
 static std::vector<std::vector<int32_t>> g_agg;
 static std::vector<std::vector<int8_t>> g_exp;
 static std::vector<dpc::Bitset<64>> g_bmp;
 
-static void loop(int sock, const Config &cfg, Stats &stats) {
+static void dataplane(int sock, const DeviceConfig &conf, Stats &stats, SwitchConsole::Dataplane &c) {
+  c.log(fmt::format("[+] dataplane listening at {}:{}", conf.addr, conf.port));
+
   std::vector<uint8_t> buf(65536);
+  for (auto i = 0; i < 32; i++) { c.log(fmt::format("hello {}", i)); }
   while (g_running.load()) {
     sockaddr_in src{};
     socklen_t slen = sizeof(src);
     ssize_t n = recvfrom(sock, buf.data(), buf.size(), 0, reinterpret_cast<sockaddr *>(&src), &slen);
-    if (n < 0) {
-      // SO_RCVTIMEO expiry -> loop back and re-check g_running
-      continue;
-    }
+    if (n < 0) continue; // SO_RCVTIMEO expiry -> re-check running
+
     char ip[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &src.sin_addr, ip, sizeof(ip));
-
     stats.record_in(n, ip);
 
-    std::cout << "[recv] " << ip << ":" << ntohs(src.sin_port) << " len=" << n << "\n";
-    // print_packet(cfg, src, buf.data(), n);
-
-    // std::lock_guard<std::mutex> lk(stats.mu);
-    // stats.packets++;
-    // stats.bytes += static_cast<uint64_t>(n);
-    // char ipbuf[INET_ADDRSTRLEN] = {0};
-    // inet_ntop(AF_INET, &src.sin_addr, ipbuf, sizeof(ipbuf));
-    // auto it = cfg.ip_to_host.find(ipbuf);
-    // std::string key = (it != cfg.ip_to_host.end() ? it->second : "?") + " (" + ipbuf + ")";
-    // stats.by_src[key]++;
-    // if (n >= static_cast<ssize_t>(DPC_HEADER_SIZE)) {
-    //   Header h;
-    //   std::memcpy(&h, buf.data(), DPC_HEADER_SIZE);
-    //   stats.by_session[wire32(h.sessid)]++;
-    // }
+    c.log(fmt::format("[recv] {}:{} len={}", ip, ntohs(src.sin_port), n));
     std::this_thread::sleep_for(std::chrono::microseconds{20});
+  }
+}
+
+static void controller(Stats &stats, SwitchConsole::Controller &c) {
+  while (g_running.load()) {
+    if (auto r = c.read_line(g_running); r.has_value()) {
+      auto cmd = r.value();
+      if (cmd == "stop") {
+        g_running.store(false);
+      } else if (cmd == "dump") {
+        // c.log(fmt::format("packets={} bytes={}", stats.packets, stats.bytes));
+      } else if (cmd == "clear") {
+        c.log("stats cleared");
+      } else if (cmd == "help") {
+        c.log("commands: help dump clear stop");
+      } else if (!cmd.empty()) {
+        c.log("unknown command: " + cmd);
+      }
+    }
   }
 }
 
@@ -185,31 +154,32 @@ static int make_udp_socket(const dpc::DeviceConfig &c) {
   return sock;
 }
 
+static void on_signal(int) { g_running.store(false); }
+
 int main(int argc, char **argv) {
   if (argc < 2) {
     std::cerr << "usage: " << argv[0] << " config.json\n";
     return 2;
   }
 
-  Config c = Config::load(argv[1]);
-
-  fmt::println("dpc_switch: addr={}:{} world={}-{}", c.addr, c.port, c.world_min, c.world_max);
-  fmt::println("    config: pipes={} mode={} reducers={} width={} payload={}-{} slots={} sessions={}", c.pipes,
-               c.reducer_mode, c.reducers, c.value_width, c.minValues(), c.maxValues(), c.reducer_slots,
-               c.sessions_max);
-  fmt::println("            wire_big_endian={}", c.wire_big_endian);
-
-  int sock = make_udp_socket(c);
-  if (sock < 0) return 1;
-  fmt::println("dataplane listening on port {}", c.port);
+  std::signal(SIGINT, on_signal);
+  std::signal(SIGTERM, on_signal);
 
   Stats stats;
-  std::thread pipeline(loop, sock, std::cref(c), std::ref(stats));
+  DeviceConfig conf = DeviceConfig::fromJson(std::string(argv[1]));
 
-  cli_controller(stats, g_running);
+  int sock = make_udp_socket(conf);
+  if (sock < 0) return 1;
+
+  SwitchConsole c;
+  c.dataplane.log(fmt::format("[+] dataplane starting with config: {}", argv[1]));
+
+  std::thread dp(dataplane, sock, std::cref(conf), std::ref(stats), std::ref(c.dataplane));
+
+  controller(stats, c.controller);
 
   g_running.store(false);
-  pipeline.join();
+  dp.join();
   close(sock);
-  return 0;
+  return 0; // ~SplitTerm runs endwin() and restores the terminal
 }

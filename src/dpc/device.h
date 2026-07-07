@@ -123,6 +123,9 @@ inline const DeviceConfig DeviceConfig::GenericTofino2 = {
     /* world_max    */ 32,
 };
 
+// Represents a session with a ToR switch
+// For now this is just a placeholder with static info. In the future, this will
+// be dynamically constructed/allocated from a session store (or something)
 struct DeviceSession {
   uint32_t id = 1;
   uint32_t pool_base = 0;
@@ -133,7 +136,7 @@ struct DeviceSession {
   } dropsim;
   static DeviceSession makeDefault(const DeviceConfig &conf) {
     // TODO: allocate dynamically from a session store
-    return DeviceSession{1, 0, conf.reducer_slots + 2u, {0.0, 0.0}};
+    return DeviceSession{1, 0, conf.reducer_slots, {0.0, 0.0}};
   }
 };
 

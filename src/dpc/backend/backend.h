@@ -87,12 +87,14 @@ protected:
    * @brief Start the backend, creating all necessary resources
    * After this call the backend is ready to execute tasks
    */
-  virtual void start() { /* empty */ ; }
+  virtual void start() { /* empty */
+    ;
+  }
   /**
    * @brief Stop the backend, destroying resources etc
    * After this call the backend cannot accept tasks
    */
-  virtual void stop() { /* empty */ };
+  virtual void stop(){/* empty */};
   /**
    * @brief Submit a task to the backend for execution
    * This is a non-blocking call that should return immediatelly
@@ -252,7 +254,7 @@ public:
 protected:
   explicit BackendWorker(MultiworkerBackend &backend, uint16_t id) : id_(id), backend_(backend) {}
   virtual Task::Status execute(std::shared_ptr<Task> task) = 0;
-  void main();
+  virtual void main();
   uint16_t id_;
   MultiworkerBackend &backend_;
 

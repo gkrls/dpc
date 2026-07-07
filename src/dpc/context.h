@@ -33,6 +33,8 @@ public:
   // Both given — no env
   Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, BackendConfig const &bc,
           uint32_t timeout = kDefaultOperationTimeoutMS);
+  Context(uint16_t rank, uint16_t world, DeviceConfig const &dc, Backend::Kind bk,
+          uint32_t timeout = kDefaultOperationTimeoutMS);
 
   ~Context();
 

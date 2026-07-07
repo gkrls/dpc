@@ -91,12 +91,12 @@ class SockWorker : public BackendWorker {
 public:
   SockWorker(SockBackend &backend, uint16_t id, int pin_core = -1);
   ~SockWorker();
-
+  void join() override;
 protected:
-  void run();
-  void join() override { if (thread_.joinable()) thread_.join(); }
+  void main() override;
   Task::Status execute(std::shared_ptr<Task> task) override;
-
+  Task::Status allreduce(std::shared_ptr<Task> task);
+  Task::Status allgather(std::shared_ptr<Task> task);
 private:
   SockBackend &backend_;
   SockConfig conf_;
@@ -107,7 +107,7 @@ private:
 
 class SockBackend : public MultiworkerBackend {
 public:
-  SockBackend()=delete;
+  SockBackend() = delete;
   SockBackend(Context &ctx, const SockConfig &conf = {});
   const SockConfig &config() const override { return conf_; }
 

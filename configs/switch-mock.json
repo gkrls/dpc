@@ -1,0 +1,23 @@
+{
+    "name": "mock-switch",
+    "asic": false,
+    "addr": "127.0.0.1",
+    "port": 4241,
+    "pipes": 1,
+    "pipes_config": [0],
+    "exponents": 4,
+    "reducers": 32,
+    "reducer_mode": 2,
+    "reducer_slots": 16384,
+    "value_width": 4,
+    "counters": 1,
+    "world_min": 1,
+    "world_max": 4,
+    "sessions_max": 1,
+
+    "defines": {
+        "net_arp_table_size": 512,
+        "net_icmp_table_size": 512,
+        "net_forwarding_table_size": 512
+    }
+}

@@ -17,10 +17,10 @@ using namespace dpc;
 
 // ============= BACKEND REGISTRATION =============
 const std::vector<Backend::Entry> Backend::registry = {
-    {Noop, "noop", &make_backend<NoopBackend, NoopConfig>, &make_config<NoopConfig>},
-    {Sock, "sock", &make_backend<SockBackend, SockConfig>, &make_config<SockConfig>},
+    {Backend::Noop, "noop", &make_backend<NoopBackend, NoopConfig>, &make_config<NoopConfig>},
+    {Backend::Sock, "sock", &make_backend<SockBackend, SockConfig>, &make_config<SockConfig>},
 #if DPC_DPDK_ENABLED
-    {Dpdk, "dpdk", &make_backend<DpdkBackend, DpdkConfig>, &make_config<DpdkConfig>},
+    {Backend::Dpdk, "dpdk", &make_backend<DpdkBackend, DpdkConfig>, &make_config<DpdkConfig>},
 #endif
 };
 // ============= BACKEND REGISTRATION =============
