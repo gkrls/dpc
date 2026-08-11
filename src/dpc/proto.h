@@ -2,6 +2,7 @@
 #define DPC_PROTO_H
 
 #include "dpc/device.h"
+#include "dpc/task.h"
 #include <cstdint>
 #include <netinet/in.h>
 
@@ -12,16 +13,19 @@ using flags_t = uint8_t;
 using quant_t = uint32_t;
 using value_t = uint32_t;
 
-enum Flag : flags_t {
+enum Flag : uint8_t {
   F_BA = 0b10000000,
   F_OL = 0b01000000,
   F_U1 = 0b00100000,
   F_U2 = 0b00010000,
   F_SY = 0b00001000,
   F_CK = 0b00000100,
-  F_PIPES_MASK = 0x00000011,
   F_RE = F_U1,
-  F_VER = F_U2
+  F_VER = F_U2,
+
+  OF_PIPE = 0b00000011,
+  OF_COLL = 0b00001100,
+  OF_OPER = 0b01110000,
 };
 
 struct Flags {
@@ -29,17 +33,22 @@ struct Flags {
 
 };
 
+
 inline static flags_t f_check(flags_t flags, flags_t flag) { return flags & flag; }
 inline static flags_t f_set(flags_t flags, flags_t flag) { return flags | flag; }
 inline static flags_t f_clear(flags_t flags, flags_t flag) { return flags & ~flag; }
 inline static flags_t f_toggle(flags_t flags, flags_t flag) { return flags ^ flag; }
 
-inline static uint8_t f_pipes(flags_t flags) { return (flags & 0b00000011); }
+inline static uint8_t f_pipes(flags_t flags) { return (flags & OF_PIPE); }
 inline static uint8_t f_getpipes(flags_t flags) { return f_pipes(flags) + 1; }
 inline static uint8_t f_setpipes(uint8_t num_pipes) { return num_pipes - 1; }
 
 inline static bool f_missmatch(flags_t a, flags_t b, flags_t flag) { return f_check(a, flag) != f_check(b, flag); }
 
+inline static Collective op_coll(uint8_t op) { return static_cast<Collective>((op & Flag::OF_COLL) >> 2); }
+inline static uint8_t op_coll(uint8_t op, Collective coll) {
+  return (op & ~Flag::OF_COLL) | ((static_cast<uint8_t>(coll) << 2) & Flag::OF_COLL);
+}
 
 struct Header {
   uint32_t sessid;    // 4 bytes
@@ -48,7 +57,7 @@ struct Header {
   uint16_t slotid;    // 2 bytes
   uint8_t rank;       // 1 byte
   uint8_t world;      // 1 byte
-  uint8_t opflags;
+  uint8_t oflags;     // 1 byte
   uint8_t flags;      // 1 byte
   uint16_t counts;    // 2 bytes(4+12) - unused by device
   uint32_t quants;    // 4 bytes

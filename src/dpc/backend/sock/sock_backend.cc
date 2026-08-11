@@ -1,7 +1,7 @@
 #include "dpc/backend/sock/sock_backend.h"
 
 #include "dpc/util/config.h"
-#include "dpc/util/cpu.h"
+#include "dpc/util/sys.h"
 #include "dpc/util/env.h"
 #include "dpc/util/log.h"
 #include "dpc/util/net.h"
@@ -40,18 +40,19 @@ SockBackend::SockBackend(Context &ctx, const SockConfig &conf) : MultiworkerBack
   // Handle pinning
   std::vector<int> cores;
   if (conf_.pinned) {
-    cores = cpu::get_nic_local_cores(conf_.iface);
+    cores = sys::get_nic_local_cores(conf_.iface);
     if (cores.size() < conf_.threads)
       DPC_ERROR("not enough NIC-local cores for iface {}: need {} have {}", conf_.iface, conf_.threads, cores.size());
     if (cores.size() - conf_.threads <= 1)
       DPC_WARN("only {} NIC-local cores left after pinning {} workers", cores.size() - conf_.threads, conf_.threads);
   }
 
+  // Create workers
   for (auto i = 0; i < conf_.threads; ++i)
-    workers.push_back(std::make_unique<SockWorker>(*this, i, cores.empty() ? -1 : cores[i]));
+    workers.push_back(std::make_unique<SockWorker>(*this, i, cores.size() ? cores[i]: -1));
 
   std::this_thread::sleep_for(std::chrono::milliseconds(10));
-  DPC_DEBUG("pinned cores: {}", dpc::pp::head(cpu::get_pinned_cores()));
+  DPC_DEBUG("pinned cores: {}", dpc::pp::head(sys::get_pinned_cores()));
 }
 
 void SockBackend::print(bool details) const {

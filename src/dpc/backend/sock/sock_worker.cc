@@ -2,9 +2,10 @@
 #include "dpc/backend/sock/sock_backend.h"
 #include "dpc/context.h"
 #include "dpc/task.h"
-#include "dpc/util/cpu.h"
 #include "dpc/util/error.h"
 #include "dpc/util/log.h"
+#include "dpc/util/sys.h"
+
 #include <chrono>
 #include <thread>
 
@@ -19,7 +20,7 @@ SockWorker::~SockWorker() {
   stop(true);
 }
 
-void SockWorker::join()  {
+void SockWorker::join() {
   if (thread_.joinable()) thread_.join();
 }
 
@@ -27,7 +28,7 @@ void SockWorker::main() {
   // Run any Socket specific initialization
   if (pin_core_ >= 0) {
     DPC_DEBUG("pinning worker to core {}", pin_core_);
-    cpu::pin_to_core(pin_core_);
+    sys::pin_to_core(pin_core_);
   }
   // Run the main task loop
   BackendWorker::main();
@@ -36,15 +37,11 @@ void SockWorker::main() {
 Task::Status SockWorker::execute(std::shared_ptr<Task> task) {
   DPC_INFO("running task {}", task->name);
   switch (task->coll) {
-  default:
-    DPC_ERROR("unsupported collective operation: {}", dpc::collectiveName(task->coll));
-  case Collective::AllReduce:
-    return allreduce(task);
-  case Collective::AllGather:
-    return allgather(task);
+  default: DPC_ERROR("unsupported collective operation: {}", dpc::getCollectiveName(task->coll));
+  case Collective::AllReduce: return allreduce(task);
+  case Collective::AllGather: return allgather(task);
   }
 }
-
 
 Task::Status SockWorker::allreduce(std::shared_ptr<Task> task) {
   DPC_INFO("allreduce task {} running...", task->name);

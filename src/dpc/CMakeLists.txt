@@ -58,7 +58,7 @@ set(DPC_SOURCES
   backend/sock/sock_net.cc
   backend/sock/sock_worker.cc
   backend/backend.cc
-  util/cpu.cc
+  util/sys.cc
   util/net.cc
   context.cc
   device.cc

@@ -1,4 +1,4 @@
-#include "dpc/util/cpu.h"
+#include "dpc/util/sys.h"
 
 #include "pg_dpc.h"
 
@@ -18,7 +18,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
       m, "Options")
       .def(py::init<>());
 
-  m.def("get_pinned_cores", &dpc::cpu::get_pinned_cores);
-  m.def("get_available_cores", &dpc::cpu::get_available_cores);
+  m.def("get_pinned_cores", &dpc::sys::get_pinned_cores);
+  m.def("get_available_cores", &dpc::sys::get_available_cores);
   m.def("create_process_group_dpc", &dpc::create_process_group_dpc);
 }

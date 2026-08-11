@@ -13,30 +13,13 @@
 #include <unordered_map>
 #include <vector>
 
+#include "dpc/collectives.h"
+
 namespace dpc::test { struct TaskFactory; }
 
 namespace dpc {
 
 class Context;
-class Task;
-
-enum DataType   : uint8_t { I32, U32, F32 };
-enum Collective : uint8_t { AllReduce, AllGather, ReduceScatter, Reduce };
-enum ReduceOp   : uint8_t { Sum = 0, Min, Max, Avg, Prod, __default__ = Sum};
-
-struct CollectiveOptions {
-  int quantization = 0;
-  int pipes = 0;
-  std::function<void(Task&)> on_complete = nullptr;
-  std::function<void(Task&)> on_abort = nullptr;
-  std::function<void(Task&)> on_error = nullptr;
-};
-
-constexpr uint8_t datatypeWidth(DataType) noexcept { return 4; }
-std::string datatypeToString(DataType dtype);
-std::string collectiveName(Collective coll);
-std::string reduceOpName(ReduceOp reduce);
-
 
 class Task {
 public:

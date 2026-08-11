@@ -1,5 +1,5 @@
 #include "dpc/task.h"
-
+#include "dpc/collectives.h"
 #include "dpc/context.h"
 #include "dpc/util/error.h"
 #include "dpc/util/log.h"
@@ -18,35 +18,6 @@ static uint64_t nextTaskID() {
   return count_.fetch_add(1);
 }
 
-std::string dpc::collectiveName(Collective coll) {
-  switch (coll) {
-  case Collective::AllReduce: return "allreduce";
-  case Collective::AllGather: return "allgather";
-  case Collective::ReduceScatter: return "reducescatter";
-  default: DPC_UNREACHABLE();
-  }
-}
-
-std::string dpc::reduceOpName(ReduceOp reduce) {
-  switch (reduce) {
-  case ReduceOp::Sum: return "sum";
-  case ReduceOp::Min: return "min";
-  case ReduceOp::Max: return "max";
-  case ReduceOp::Avg: return "avg";
-  case ReduceOp::Prod: return "prod";
-  default: DPC_UNREACHABLE();
-  }
-}
-
-std::string dpc::datatypeToString(DataType dtype) {
-  switch (dtype) {
-  case DataType::I32: return "i32";
-  case DataType::U32: return "u32";
-  case DataType::F32: return "f32";
-  default: DPC_UNREACHABLE();
-  }
-}
-
 // --- construction ---
 
 // Task::Task(Context &ctx, Collective coll, ReduceOp reduce, void *in, void *out, uint64_t in_count, uint64_t
@@ -55,7 +26,7 @@ std::string dpc::datatypeToString(DataType dtype) {
 
 Task::Task(Context &ctx, bool async, const void *sendbuf, void *recvbuf, uint64_t sendcount, uint64_t recvcount,
            DataType type, ReduceOp reduce, Collective coll, CollectiveOptions opt)
-    : ctx(ctx), id(nextTaskID()), collname(collectiveName(coll)), name(std::to_string(id) + "." + collname),
+    : ctx(ctx), id(nextTaskID()), collname(getCollectiveName(coll)), name(std::to_string(id) + "." + collname),
       async(async), sendbuf(sendbuf), recvbuf(recvbuf), sendcount(sendcount), recvcount(recvcount), type(type),
       coll(coll), reduce(reduce), opt(opt), stats{} {
   // stats.time.create = std::chrono::steady_clock::now();
@@ -161,9 +132,9 @@ std::string_view Task::getStatusString() const { return getStatusString(status);
 
 std::string const &Task::toString() const {
   if (str.empty()) {
-    auto send_ty_str = fmt::format("[{} x {}] ", sendcount, datatypeToString(type));
-    auto recv_ty_str = fmt::format("[{} x {}] ", recvcount, datatypeToString(type));
-    str = fmt::format("task {}.{} {}{} > {}{} {}", id, collectiveName(coll), send_ty_str, sendbuf,
+    auto send_ty_str = fmt::format("[{} x {}] ", sendcount, getDatatypeName(type));
+    auto recv_ty_str = fmt::format("[{} x {}] ", recvcount, getDatatypeName(type));
+    str = fmt::format("task {}.{} {}{} > {}{} {}", id, getCollectiveName(coll), send_ty_str, sendbuf,
                       sendcount != recvcount ? recv_ty_str : "", recvbuf, async ? "async" : "sync");
   }
 
@@ -260,7 +231,7 @@ std::unordered_map<std::string, float> Task::getStats() {
 
   float time_s = time_ms > 0.0f ? time_ms / 1000.0f : 1e-9f;
   float elements = static_cast<float>(sendcount);
-  float bytes = static_cast<float>(sendcount * datatypeWidth(type));
+  float bytes = static_cast<float>(sendcount * getDatatypeWidth(type));
 
   out["time_ms"] = time_ms;
   // out["threads"] = static_cast<float>(stats.perf.threads.load());

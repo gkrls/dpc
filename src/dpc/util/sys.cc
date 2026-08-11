@@ -1,4 +1,4 @@
-#include "dpc/util/cpu.h"
+#include "dpc/util/sys.h"
 #include "dpc/util/error.h"
 
 #include <algorithm>
@@ -10,7 +10,7 @@
 #include <sstream>
 #include <stdexcept>
 
-namespace dpc::cpu {
+namespace dpc::sys {
 
 namespace {
 std::vector<int> g_pinned;

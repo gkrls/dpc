@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 
-namespace dpc::cpu {
+namespace dpc::sys {
 
 // Cores allowed by the current cpuset (taskset/cgroups respected).
 std::vector<int> get_available_cores();
